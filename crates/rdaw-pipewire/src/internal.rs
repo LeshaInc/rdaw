@@ -192,6 +192,7 @@ impl PwThread {
             *MEDIA_ROLE => "Production",
             *MEDIA_CATEGORY => "Playback",
             *AUDIO_CHANNELS => num_channels.to_string().as_bytes(),
+            *NODE_LATENCY => format!("{buffer_size}/{sample_rate}").as_bytes(),
         };
 
         let stream = Stream::new(&self.core, &name, props)?;
@@ -220,7 +221,6 @@ impl PwThread {
                         samples,
                         num_channels,
                         num_frames,
-                        stride,
                     });
 
                     let chunk = data.chunk_mut();
