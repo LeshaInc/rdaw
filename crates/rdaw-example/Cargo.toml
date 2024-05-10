@@ -1,0 +1,14 @@
+[package]
+name = "rdaw-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdaw-core.workspace = true
+rdaw-graph.workspace = true
+rdaw-pipewire.workspace = true
+
+crossbeam-queue = "0.3.11"
+rtrb = "0.3.0"
+thread-priority = "1.1.0"
+audio_thread_priority = "0.32.0"

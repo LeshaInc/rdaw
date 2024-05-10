@@ -1,0 +1,13 @@
+[package]
+name = "rdaw-pipewire"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdaw-core.workspace = true
+
+oneshot.workspace = true
+pipewire.workspace = true
+slotmap.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

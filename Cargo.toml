@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+
+members = [
+  "crates/*"
+]
+
+[workspace.dependencies]
+rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
+rdaw-graph = { path = "crates/rdaw-graph", version = "0.1.0" }
+rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
+
+bumpalo = "3.16.0"
+crossbeam-utils = "0.8.19"
+loom = "0.7.2"
+oneshot = "0.1.6"
+parking_lot_core = "0.9.10"
+pipewire = "0.8.0"
+shared_memory = "0.12.4"
+slotmap = "1.0.7"
+smallvec = "1.13.2"
+thiserror = "1.0.59"
+tracing = "0.1.40"
