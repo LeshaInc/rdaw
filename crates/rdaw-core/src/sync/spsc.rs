@@ -1,8 +1,9 @@
+use std::future::Future;
 #[cfg(not(loom))]
 use std::sync::atomic::Ordering::{Acquire, Release, SeqCst};
 #[cfg(not(loom))]
 use std::sync::atomic::{fence, AtomicUsize};
-use std::task::Waker;
+use std::task::{Context, Poll, Waker};
 #[cfg(not(loom))]
 use std::thread::{self, Thread};
 
@@ -31,15 +32,15 @@ struct SharedState {
 }
 
 enum AnyWaker {
-    Thread(Thread),
-    Task(Waker),
+    Sync(Thread),
+    Async(Waker),
 }
 
 impl AnyWaker {
     fn wake(self) {
         match self {
-            AnyWaker::Thread(thread) => thread.unpark(),
-            AnyWaker::Task(waker) => waker.wake(),
+            AnyWaker::Sync(thread) => thread.unpark(),
+            AnyWaker::Async(waker) => waker.wake(),
         }
     }
 }
@@ -71,7 +72,7 @@ impl<T> Sender<T> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
         ud.sender_waker
-            .store(Some(AnyWaker::Thread(thread::current())));
+            .store(Some(AnyWaker::Sync(thread::current())));
 
         fence(SeqCst);
 
@@ -92,6 +93,31 @@ impl<T> Sender<T> {
         Ok(())
     }
 
+    #[cold]
+    #[inline(never)]
+    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<Result<(), Closed<()>>> {
+        let ud = self.producer.userdata();
+        ud.sender_waiting_len.store(count, Release);
+        ud.sender_waker
+            .store(Some(AnyWaker::Async(context.waker().clone())));
+
+        fence(SeqCst);
+
+        self.producer.refresh();
+
+        if self.producer.capacity() - self.producer.len() >= count {
+            return Poll::Ready(Ok(()));
+        }
+
+        if self.producer.is_closed() {
+            return Poll::Ready(Err(Closed(())));
+        }
+
+        self.try_wake_receiver();
+
+        Poll::Pending
+    }
+
     pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
         self.producer.push(value)?;
         self.send_success();
@@ -107,19 +133,47 @@ impl<T> Sender<T> {
                 Ok(()) => return Ok(()),
                 Err(PushError::Closed(v)) => return Err(Closed(v)),
                 Err(PushError::Full(v)) => {
-                    value = Some(v);
-
                     #[cfg(not(loom))]
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
                         if let Err(Closed(())) = self.send_wait(1) {
-                            return Err(Closed(value.take().unwrap()));
+                            return Err(Closed(v));
                         }
                     }
+
+                    value = Some(v);
                 }
             }
         }
+    }
+
+    pub fn send_async(&mut self, value: T) -> impl Future<Output = Result<(), Closed<T>>> + '_ {
+        let mut value = Some(value);
+        let backoff = Backoff::new();
+
+        std::future::poll_fn(move |ctx| loop {
+            match self.try_send(value.take().unwrap()) {
+                Ok(()) => return Poll::Ready(Ok(())),
+                Err(PushError::Closed(v)) => return Poll::Ready(Err(Closed(v))),
+                Err(PushError::Full(v)) => {
+                    #[cfg(not(loom))]
+                    backoff.snooze();
+
+                    if backoff.is_completed() || cfg!(loom) {
+                        match self.send_wait_async(1, ctx) {
+                            Poll::Ready(Ok(_)) => {}
+                            Poll::Ready(Err(_)) => {
+                                return Poll::Ready(Err(Closed(v)));
+                            }
+                            Poll::Pending => return Poll::Pending,
+                        }
+                    }
+
+                    value = Some(v);
+                }
+            }
+        })
     }
 
     pub fn try_send_slice(&mut self, slice: &[T]) -> Result<(), TrySendError<()>>
@@ -192,7 +246,7 @@ impl<T> Receiver<T> {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
         ud.receiver_waker
-            .store(Some(AnyWaker::Thread(thread::current())));
+            .store(Some(AnyWaker::Sync(thread::current())));
 
         fence(SeqCst);
 
@@ -211,6 +265,31 @@ impl<T> Receiver<T> {
         thread::park();
 
         Ok(())
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<Result<(), Closed>> {
+        let ud = self.consumer.userdata();
+        ud.receiver_waiting_len.store(count, Release);
+        ud.receiver_waker
+            .store(Some(AnyWaker::Async(context.waker().clone())));
+
+        fence(SeqCst);
+
+        self.consumer.refresh();
+
+        if self.consumer.len() >= count {
+            return Poll::Ready(Ok(()));
+        }
+
+        if self.consumer.is_closed() {
+            return Poll::Ready(Err(Closed(())));
+        }
+
+        self.try_wake_sender();
+
+        Poll::Pending
     }
 
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
@@ -236,6 +315,29 @@ impl<T> Receiver<T> {
                 }
             }
         }
+    }
+
+    pub fn recv_async(&mut self) -> impl Future<Output = Result<T, Closed>> + '_ {
+        let backoff = Backoff::new();
+
+        std::future::poll_fn(move |ctx| loop {
+            match self.try_recv() {
+                Ok(v) => return Poll::Ready(Ok(v)),
+                Err(PopError::Closed) => return Poll::Ready(Err(Closed(()))),
+                Err(PopError::Empty) => {
+                    #[cfg(not(loom))]
+                    backoff.snooze();
+
+                    if backoff.is_completed() || cfg!(loom) {
+                        match self.recv_wait_async(1, ctx) {
+                            Poll::Ready(Ok(_)) => {}
+                            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+                            Poll::Pending => return Poll::Pending,
+                        }
+                    }
+                }
+            }
+        })
     }
 
     pub fn try_recv_slice(&mut self, slice: &mut [T]) -> Result<(), TryRecvError>
