@@ -348,46 +348,6 @@ impl<T, U, B: Buffer<T, U>> Producer<T, U, B> {
         Ok(())
     }
 
-    /// Pushes multiple elements into the ring buffer in a FIFO manner.
-    /// The consumer will see element in the same order.
-    ///
-    /// Follows the same semantics as [`Self::push()`], except will reserve multiple slots,
-    /// according to [`ExactSizeIterator::len()`].
-    ///
-    /// If the implementation lied and the iterator produced more elements than expected,
-    /// the remaining elements will be dropped.
-    pub fn push_many<I>(&mut self, values: I) -> Result<(), PushError<I::IntoIter>>
-    where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let iter = values.into_iter();
-        let len = iter.len();
-        if len == 0 {
-            return Ok(());
-        }
-
-        let mut idx = match self.ensure_free_slots(len) {
-            Ok(v) => v,
-            Err(PushError::Full(())) => return Err(PushError::Full(iter)),
-            Err(PushError::Closed(())) => return Err(PushError::Closed(iter)),
-        };
-
-        let mut actual_len = 0;
-
-        for value in iter.take(len) {
-            // SAFETY: `data_ptr` is valid, `idx` is in bounds
-            unsafe { self.data_ptr().add(idx).write(MaybeUninit::new(value)) };
-            actual_len += 1;
-            idx = idx.wrapping_add(1) & (self.capacity() - 1);
-        }
-
-        // SAFETY: `actual_len <= len`, and we ensured there's at least `len` free slots
-        unsafe { self.commit(actual_len) };
-
-        Ok(())
-    }
-
     /// Push a slice of elements, copying them into the ring buffer.
     ///
     /// Follows the same semantics as [`Self::push()`], returning `PushError::Full` if there is not
@@ -611,22 +571,6 @@ impl<T, U, B: Buffer<T, U>> Consumer<T, U, B> {
         Ok(value)
     }
 
-    /// Pops multiple elements from the buffer in a FIFO manner, i.e. the same order in which they
-    /// have been pushed.
-    ///
-    /// Follows the same semantics as `Self::pop()` with respect to cached state and returned
-    /// errors.
-    ///
-    /// If the returned iterator is not fully consumed, remaining elements will remain in the
-    /// buffer.
-    pub fn pop_many(&mut self, count: usize) -> Result<PopIter<'_, T, U, B>, PopError> {
-        self.ensure_contains(count)?;
-        Ok(PopIter {
-            remaining: count,
-            consumer: self,
-        })
-    }
-
     /// Pops multiple elements from the ring buffer, copying them into the specified slice.
     ///
     /// Follows the same semantics as [`Self::pop()`], returning `PopError::Empty` if there isn't at
@@ -723,60 +667,6 @@ pub enum PopError {
     Closed,
 }
 
-pub struct PopIter<'a, T, U, B: Buffer<T, U> = ProcessLocalBuffer<T, U>> {
-    remaining: usize,
-    consumer: &'a mut Consumer<T, U, B>,
-}
-
-impl<T, U, B: Buffer<T, U>> PopIter<'_, T, U, B> {
-    /// Returns a shared reference to userdata stored in the buffer.
-    pub fn userdata(&self) -> &U {
-        self.consumer.userdata()
-    }
-
-    /// Returns the number of elements currently stored in the buffer.
-    ///
-    /// Uses the cached state. To update, call [`Self::refresh()`].
-    pub fn buffer_len(&self) -> usize {
-        self.consumer.len()
-    }
-
-    /// Returns the capacity of the buffer.
-    pub fn buffer_capacity(&self) -> usize {
-        self.consumer.capacity()
-    }
-}
-
-impl<T, U, B: Buffer<T, U>> Iterator for PopIter<'_, T, U, B> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining == 0 {
-            return None;
-        }
-
-        self.remaining -= 1;
-
-        // `capacity` is a power of two, using bitwise and instead of modulo.
-        let idx = self.consumer.read_idx & (self.consumer.capacity() - 1);
-
-        // SAFETY: `data_ptr` is valid, `idx` is in its bounds, and the value is initialized
-        // The value won't be read again because of `commit` on the next line
-        let value = unsafe { self.consumer.data_ptr().add(idx).read().assume_init() };
-
-        // SAFETY: `ensure_contains` called beforehand, in `Consumer::pop_many`
-        unsafe { self.consumer.commit(1) };
-
-        Some(value)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.remaining, Some(self.remaining))
-    }
-}
-
-impl<T, U, B: Buffer<T, U>> ExactSizeIterator for PopIter<'_, T, U, B> {}
-
 #[cfg(test)]
 mod tests {
     #[cfg(not(loom))]
@@ -860,35 +750,6 @@ mod tests {
 
         drop(producer);
         assert_eq!(consumer.pop(), Err(PopError::Closed));
-    }
-
-    #[test]
-    #[cfg(not(loom))]
-    fn test_push_many() {
-        let (mut producer, mut consumer) = buffer(4);
-
-        assert!(producer.push_many([1, 2, 3, 4]).is_ok());
-
-        assert_eq!(consumer.pop(), Ok(1));
-        assert_eq!(consumer.pop(), Ok(2));
-        assert_eq!(consumer.pop(), Ok(3));
-        assert_eq!(consumer.pop(), Ok(4));
-        assert_eq!(consumer.pop(), Err(PopError::Empty));
-    }
-
-    #[test]
-    #[cfg(not(loom))]
-    fn test_push_many_pop_many() {
-        let (mut producer, mut consumer) = buffer(4);
-
-        assert!(producer.push_many([1, 2, 3, 4]).is_ok());
-
-        assert_eq!(
-            consumer.pop_many(4).unwrap().collect::<Vec<_>>(),
-            vec![1, 2, 3, 4]
-        );
-
-        assert_eq!(consumer.pop(), Err(PopError::Empty));
     }
 
     #[test]

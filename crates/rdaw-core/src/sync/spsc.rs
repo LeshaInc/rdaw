@@ -1,4 +1,3 @@
-use std::mem::ManuallyDrop;
 #[cfg(not(loom))]
 use std::sync::atomic::Ordering::{Acquire, Release, SeqCst};
 #[cfg(not(loom))]
@@ -16,7 +15,7 @@ use loom::sync::atomic::{fence, AtomicUsize};
 #[cfg(loom)]
 use loom::thread::{self, Thread};
 
-use super::ring::{buffer_with_userdata, Consumer, PopError, PopIter, Producer, PushError};
+use super::ring::{buffer_with_userdata, Consumer, PopError, Producer, PushError};
 
 pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     let (producer, consumer) = buffer_with_userdata(capacity, SharedState::default());
@@ -116,46 +115,6 @@ impl<T> Sender<T> {
                     if backoff.is_completed() || cfg!(loom) {
                         if let Err(Closed(())) = self.send_wait(1) {
                             return Err(Closed(value.take().unwrap()));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn try_send_many<I>(&mut self, values: I) -> Result<(), TrySendError<I::IntoIter>>
-    where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        self.producer.push_many(values)?;
-        self.send_success();
-        Ok(())
-    }
-
-    pub fn send_many<I>(&mut self, values: I) -> Result<(), Closed<I::IntoIter>>
-    where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let iter = values.into_iter();
-        let len = iter.len();
-        let mut iter = Some(iter);
-        let backoff = Backoff::new();
-
-        loop {
-            match self.try_send_many(iter.take().unwrap()) {
-                Ok(()) => return Ok(()),
-                Err(PushError::Closed(v)) => return Err(Closed(v)),
-                Err(PushError::Full(v)) => {
-                    iter = Some(v);
-
-                    #[cfg(not(loom))]
-                    backoff.snooze();
-
-                    if backoff.is_completed() || cfg!(loom) {
-                        if let Err(Closed(())) = self.send_wait(len) {
-                            return Err(Closed(iter.take().unwrap()));
                         }
                     }
                 }
@@ -279,38 +238,6 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn try_recv_many(&mut self, count: usize) -> Result<RecvManyIter<'_, T>, TryRecvError> {
-        let iter = self.consumer.pop_many(count)?;
-        iter.userdata().receiver_waiting_len.store(0, Release);
-        Ok(RecvManyIter { iter })
-    }
-
-    pub fn recv_many(&mut self, count: usize) -> Result<RecvManyIter<'_, T>, Closed> {
-        let backoff = Backoff::new();
-
-        loop {
-            match self.try_recv_many(count) {
-                Ok(iter) => {
-                    // Here be dragons: Rust doesn't allow returning a value returning `self` in a
-                    // loop, so we do an unsafe lifetime transmutation
-                    let iter = ManuallyDrop::new(iter);
-                    let iter =
-                        unsafe { std::ptr::read(&iter as *const _ as *const RecvManyIter<'_, T>) };
-                    return Ok(iter);
-                }
-                Err(PopError::Closed) => return Err(Closed(())),
-                Err(PopError::Empty) => {
-                    #[cfg(not(loom))]
-                    backoff.snooze();
-
-                    if backoff.is_completed() || cfg!(loom) {
-                        self.recv_wait(count)?;
-                    }
-                }
-            }
-        }
-    }
-
     pub fn try_recv_slice(&mut self, slice: &mut [T]) -> Result<(), TryRecvError>
     where
         T: Copy,
@@ -347,25 +274,6 @@ impl<T> Drop for Receiver<T> {
         self.consumer.close();
         fence(SeqCst);
         self.wake_sender();
-    }
-}
-
-pub struct RecvManyIter<'a, T> {
-    iter: PopIter<'a, T, SharedState>,
-}
-
-impl<T> Iterator for RecvManyIter<'_, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let value = self.iter.next()?;
-
-        let free_space = self.iter.buffer_capacity() - self.iter.buffer_len();
-        if free_space >= self.iter.userdata().sender_waiting_len.load(Acquire) {
-            wake(&self.iter.userdata().sender_waker);
-        }
-
-        Some(value)
     }
 }
 
@@ -408,22 +316,6 @@ mod tests {
         assert_eq!(receiver.recv(), Ok(2));
         assert_eq!(receiver.recv(), Ok(3));
         assert_eq!(receiver.recv(), Ok(4));
-
-        assert_eq!(receiver.recv(), Err(Closed(())));
-    }
-
-    #[test]
-    #[cfg(not(loom))]
-    fn test_many_seq() {
-        let (mut sender, mut receiver) = channel(4);
-
-        assert!(sender.send_many([1, 2, 3, 4]).is_ok());
-        drop(sender);
-
-        assert_eq!(
-            receiver.recv_many(4).unwrap().collect::<Vec<_>>(),
-            vec![1, 2, 3, 4]
-        );
 
         assert_eq!(receiver.recv(), Err(Closed(())));
     }
