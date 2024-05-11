@@ -16,6 +16,9 @@ pub struct IpcRing<T, U> {
 }
 
 impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
+    /// Creates an IPC ring buffer with a specified ID prefix.
+    ///
+    /// The rest of the ID will be randomly generated.
     pub fn create(prefix: String, capacity: usize, userdata: U) -> io::Result<Self> {
         let buffer = IpcBuffer::create(prefix, capacity, userdata)?;
         Ok(Self {
@@ -23,6 +26,11 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
         })
     }
 
+    /// Opens an event object by ID.
+    ///
+    /// # Safety
+    ///
+    /// ID must be obtained by [`IpcRing::id`]
     pub unsafe fn open(id: &str) -> io::Result<Self> {
         let buffer = IpcBuffer::open(id)?;
         Ok(Self {
@@ -145,7 +153,7 @@ unsafe impl<T: IpcSafe, U: IpcSafe> Buffer<T, U> for IpcBuffer<T, U> {
         let offset = Self::offset();
         // SAFETY: after adding `offset`, pointer is still in bounds (since capacity is > 0)
         // and properly aligned (enforced by `Layout::extend`).
-        unsafe { (self.shm.as_ptr() as *mut u8).add(offset) as *mut MaybeUninit<T> }
+        unsafe { self.shm.as_ptr().add(offset) as *mut MaybeUninit<T> }
     }
 
     fn capacity(&self) -> usize {

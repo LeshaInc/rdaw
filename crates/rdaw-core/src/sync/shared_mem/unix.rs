@@ -55,7 +55,7 @@ impl OsShm {
         };
 
         Ok(OsShm {
-            id: id.into(),
+            id,
             size,
             ptr: ptr.cast(),
             fd: ManuallyDrop::new(fd),
