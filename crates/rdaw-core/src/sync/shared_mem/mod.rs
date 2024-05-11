@@ -9,7 +9,7 @@ use self::unix::*;
 pub struct SharedMemory(OsShm);
 
 impl SharedMemory {
-    pub fn create(prefix: String, size: usize) -> io::Result<SharedMemory> {
+    pub fn create(prefix: &str, size: usize) -> io::Result<SharedMemory> {
         OsShm::create(prefix, size).map(SharedMemory)
     }
 
@@ -19,6 +19,10 @@ impl SharedMemory {
 
     pub fn id(&self) -> &str {
         self.0.id()
+    }
+
+    pub fn prefix(&self) -> &str {
+        self.0.prefix()
     }
 
     pub fn size(&self) -> usize {

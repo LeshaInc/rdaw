@@ -13,7 +13,7 @@ impl Event {
     /// Creates an event object with a specified ID prefix.
     ///
     /// The rest of the ID will be randomly generated.
-    pub fn create(prefix: String) -> io::Result<Event> {
+    pub fn create(prefix: &str) -> io::Result<Event> {
         OsEvent::create(prefix).map(Event)
     }
 
@@ -28,6 +28,10 @@ impl Event {
 
     pub fn id(&self) -> &str {
         self.0.id()
+    }
+
+    pub fn prefix(&self) -> &str {
+        self.0.prefix()
     }
 
     pub fn wait(&self) {

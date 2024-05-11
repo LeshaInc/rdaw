@@ -18,7 +18,7 @@ pub struct OsEvent {
 }
 
 impl OsEvent {
-    pub fn create(prefix: String) -> io::Result<OsEvent> {
+    pub fn create(prefix: &str) -> io::Result<OsEvent> {
         let layout = Layout::new::<SharedState>();
         let shm = SharedMemory::create(prefix, layout.size())?;
 
@@ -51,6 +51,10 @@ impl OsEvent {
 
     pub fn id(&self) -> &str {
         self.shm.id()
+    }
+
+    pub fn prefix(&self) -> &str {
+        self.shm.prefix()
     }
 
     pub fn wait(&self) {

@@ -1,5 +1,6 @@
 pub mod ipc_event;
 pub mod ipc_ring;
+pub mod ipc_spsc;
 pub mod ring;
 pub mod shared_mem;
 pub mod spsc;

@@ -2,7 +2,7 @@ use std::alloc::Layout;
 use std::io;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
-use std::sync::atomic::Ordering::{AcqRel, Relaxed};
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize};
 
 use crossbeam_utils::CachePadded;
@@ -19,7 +19,7 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
     /// Creates an IPC ring buffer with a specified ID prefix.
     ///
     /// The rest of the ID will be randomly generated.
-    pub fn create(prefix: String, capacity: usize, userdata: U) -> io::Result<Self> {
+    pub fn create(prefix: &str, capacity: usize, userdata: U) -> io::Result<Self> {
         let buffer = IpcBuffer::create(prefix, capacity, userdata)?;
         Ok(Self {
             buffer: Some(buffer),
@@ -42,6 +42,15 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
         self.buffer.as_ref().unwrap().id()
     }
 
+    pub fn prefix(&self) -> &str {
+        self.buffer.as_ref().unwrap().prefix()
+    }
+
+    pub fn producer_created(&self) -> bool {
+        let buffer = self.buffer.as_ref().unwrap();
+        buffer.header().producer_created.load(Acquire)
+    }
+
     pub fn producer(mut self) -> Producer<T, U, IpcBuffer<T, U>> {
         let buffer = self.buffer.take().unwrap();
 
@@ -52,6 +61,11 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
         buffer.refcount().fetch_add(1, Relaxed);
 
         unsafe { Producer::new(ManuallyDrop::new(buffer)) }
+    }
+
+    pub fn consumer_created(&self) -> bool {
+        let buffer = self.buffer.as_ref().unwrap();
+        buffer.header().consumer_created.load(Acquire)
     }
 
     pub fn consumer(mut self) -> Consumer<T, U, IpcBuffer<T, U>> {
@@ -84,7 +98,7 @@ pub struct IpcBuffer<T, U> {
 }
 
 impl<T: IpcSafe, U: IpcSafe> IpcBuffer<T, U> {
-    fn create(prefix: String, capacity: usize, userdata: U) -> io::Result<Self> {
+    fn create(prefix: &str, capacity: usize, userdata: U) -> io::Result<Self> {
         let layout = Self::layout(capacity);
         let shm = SharedMemory::create(prefix, layout.size())?;
 
@@ -122,6 +136,10 @@ impl<T: IpcSafe, U: IpcSafe> IpcBuffer<T, U> {
 
     fn id(&self) -> &str {
         self.shm.id()
+    }
+
+    fn prefix(&self) -> &str {
+        self.shm.prefix()
     }
 
     fn header(&self) -> &Header<U> {

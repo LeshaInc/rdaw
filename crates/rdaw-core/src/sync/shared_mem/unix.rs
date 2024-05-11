@@ -13,6 +13,7 @@ use rand::Rng;
 
 pub struct OsShm {
     id: String,
+    prefix: String,
     size: usize,
     ptr: NonNull<u8>,
     fd: ManuallyDrop<OwnedFd>,
@@ -20,7 +21,7 @@ pub struct OsShm {
 }
 
 impl OsShm {
-    pub fn create(prefix: String, size: usize) -> io::Result<OsShm> {
+    pub fn create(prefix: &str, size: usize) -> io::Result<OsShm> {
         let mut rng = rand::thread_rng();
 
         let (fd, id) = loop {
@@ -56,6 +57,7 @@ impl OsShm {
 
         Ok(OsShm {
             id,
+            prefix: prefix.into(),
             size,
             ptr: ptr.cast(),
             fd: ManuallyDrop::new(fd),
@@ -84,8 +86,11 @@ impl OsShm {
             )?
         };
 
+        let (prefix, _) = id.rsplit_once('.').unwrap();
+
         Ok(OsShm {
             id: id.into(),
+            prefix: prefix.into(),
             size,
             ptr: ptr.cast(),
             fd: ManuallyDrop::new(fd),
@@ -95,6 +100,10 @@ impl OsShm {
 
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    pub fn prefix(&self) -> &str {
+        &self.prefix
     }
 
     pub fn size(&self) -> usize {
