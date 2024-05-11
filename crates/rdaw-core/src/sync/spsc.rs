@@ -6,6 +6,7 @@ use std::sync::atomic::{fence, AtomicUsize};
 use std::task::{Context, Poll, Waker};
 #[cfg(not(loom))]
 use std::thread::{self, Thread};
+use std::time::{Duration, Instant};
 
 use crossbeam_utils::atomic::AtomicCell;
 use crossbeam_utils::{Backoff, CachePadded};
@@ -68,7 +69,7 @@ impl<T> Sender<T> {
 
     #[cold]
     #[inline(never)]
-    fn send_wait(&mut self, count: usize) -> Result<(), Closed<()>> {
+    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
         ud.sender_waker
@@ -79,23 +80,27 @@ impl<T> Sender<T> {
         self.producer.refresh();
 
         if self.producer.capacity() - self.producer.len() >= count {
-            return Ok(());
+            return true;
         }
 
         if self.producer.is_closed() {
-            return Err(Closed(()));
+            return false;
         }
 
         self.try_wake_receiver();
 
-        thread::park();
+        if let Some(deadline) = deadline {
+            thread::park_timeout(Instant::now().saturating_duration_since(deadline))
+        } else {
+            thread::park();
+        }
 
-        Ok(())
+        true
     }
 
     #[cold]
     #[inline(never)]
-    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<Result<(), Closed<()>>> {
+    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
         ud.sender_waker
@@ -106,11 +111,11 @@ impl<T> Sender<T> {
         self.producer.refresh();
 
         if self.producer.capacity() - self.producer.len() >= count {
-            return Poll::Ready(Ok(()));
+            return Poll::Ready(true);
         }
 
         if self.producer.is_closed() {
-            return Poll::Ready(Err(Closed(())));
+            return Poll::Ready(false);
         }
 
         self.try_wake_receiver();
@@ -119,26 +124,41 @@ impl<T> Sender<T> {
     }
 
     pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
-        self.producer.push(value)?;
+        self.producer.push(value).map_err(|e| match e {
+            PushError::Full(v) => TrySendError::Full(v),
+            PushError::Closed(v) => TrySendError::Closed(v),
+        })?;
+
         self.send_success();
+
         Ok(())
     }
 
-    pub fn send(&mut self, value: T) -> Result<(), Closed<T>> {
+    fn send_deadline(
+        &mut self,
+        value: T,
+        deadline: Option<Instant>,
+    ) -> Result<(), TrySendError<T>> {
         let mut value = Some(value);
         let backoff = Backoff::new();
 
         loop {
             match self.try_send(value.take().unwrap()) {
                 Ok(()) => return Ok(()),
-                Err(PushError::Closed(v)) => return Err(Closed(v)),
-                Err(PushError::Full(v)) => {
+                Err(TrySendError::Closed(v)) => return Err(TrySendError::Closed(v)),
+                Err(TrySendError::Full(v)) => {
+                    if let Some(deadline) = deadline {
+                        if Instant::now() > deadline {
+                            return Err(TrySendError::Full(v));
+                        }
+                    }
+
                     #[cfg(not(loom))]
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if let Err(Closed(())) = self.send_wait(1) {
-                            return Err(Closed(v));
+                        if !self.send_wait(1, deadline) {
+                            return Err(TrySendError::Closed(v));
                         }
                     }
 
@@ -148,23 +168,34 @@ impl<T> Sender<T> {
         }
     }
 
-    pub fn send_async(&mut self, value: T) -> impl Future<Output = Result<(), Closed<T>>> + '_ {
+    pub fn send(&mut self, value: T) -> Result<(), SendError<T>> {
+        self.send_deadline(value, None).map_err(|e| match e {
+            TrySendError::Full(_) => unreachable!(),
+            TrySendError::Closed(v) => SendError::Closed(v),
+        })
+    }
+
+    pub fn send_timeout(&mut self, value: T, timeout: Duration) -> Result<(), TrySendError<T>> {
+        self.send_deadline(value, Some(Instant::now() + timeout))
+    }
+
+    pub fn send_async(&mut self, value: T) -> impl Future<Output = Result<(), SendError<T>>> + '_ {
         let mut value = Some(value);
         let backoff = Backoff::new();
 
         std::future::poll_fn(move |ctx| loop {
             match self.try_send(value.take().unwrap()) {
                 Ok(()) => return Poll::Ready(Ok(())),
-                Err(PushError::Closed(v)) => return Poll::Ready(Err(Closed(v))),
-                Err(PushError::Full(v)) => {
+                Err(TrySendError::Closed(v)) => return Poll::Ready(Err(SendError::Closed(v))),
+                Err(TrySendError::Full(v)) => {
                     #[cfg(not(loom))]
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
                         match self.send_wait_async(1, ctx) {
-                            Poll::Ready(Ok(_)) => {}
-                            Poll::Ready(Err(_)) => {
-                                return Poll::Ready(Err(Closed(v)));
+                            Poll::Ready(true) => {}
+                            Poll::Ready(false) => {
+                                return Poll::Ready(Err(SendError::Closed(v)));
                             }
                             Poll::Pending => return Poll::Pending,
                         }
@@ -180,12 +211,21 @@ impl<T> Sender<T> {
     where
         T: Copy,
     {
-        self.producer.push_slice(slice)?;
+        self.producer.push_slice(slice).map_err(|e| match e {
+            PushError::Full(v) => TrySendError::Full(v),
+            PushError::Closed(v) => TrySendError::Closed(v),
+        })?;
+
         self.send_success();
+
         Ok(())
     }
 
-    pub fn send_slice(&mut self, slice: &[T]) -> Result<(), Closed>
+    fn send_slice_deadline(
+        &mut self,
+        slice: &[T],
+        deadline: Option<Instant>,
+    ) -> Result<(), TrySendError<()>>
     where
         T: Copy,
     {
@@ -194,17 +234,40 @@ impl<T> Sender<T> {
         loop {
             match self.try_send_slice(slice) {
                 Ok(()) => return Ok(()),
-                Err(PushError::Closed(())) => return Err(Closed(())),
-                Err(PushError::Full(())) => {
+                Err(TrySendError::Closed(())) => return Err(TrySendError::Closed(())),
+                Err(TrySendError::Full(())) => {
                     #[cfg(not(loom))]
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        self.send_wait(slice.len())?;
+                        if !self.send_wait(slice.len(), deadline) {
+                            return Err(TrySendError::Closed(()));
+                        }
                     }
                 }
             }
         }
+    }
+
+    pub fn send_slice(&mut self, slice: &[T]) -> Result<(), SendError<()>>
+    where
+        T: Copy,
+    {
+        self.send_slice_deadline(slice, None).map_err(|e| match e {
+            TrySendError::Full(_) => unreachable!(),
+            TrySendError::Closed(v) => SendError::Closed(v),
+        })
+    }
+
+    pub fn send_slice_timeout(
+        &mut self,
+        slice: &[T],
+        timeout: Duration,
+    ) -> Result<(), TrySendError<()>>
+    where
+        T: Copy,
+    {
+        self.send_slice_deadline(slice, Some(Instant::now() + timeout))
     }
 }
 
@@ -216,7 +279,24 @@ impl<T> Drop for Sender<T> {
     }
 }
 
-pub type TrySendError<T> = PushError<T>;
+/// Error returned from [`Sender::try_send()`].
+#[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
+pub enum TrySendError<T> {
+    /// The channel is full, try again later.
+    #[error("full")]
+    Full(T),
+    /// The channel is closed.
+    #[error("closed")]
+    Closed(T),
+}
+
+/// Error returned from [`Sender::send()`].
+#[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
+pub enum SendError<T> {
+    /// The channel is closed.
+    #[error("closed")]
+    Closed(T),
+}
 
 pub struct Receiver<T> {
     consumer: Consumer<T, SharedState>,
@@ -242,7 +322,7 @@ impl<T> Receiver<T> {
 
     #[cold]
     #[inline(never)]
-    fn recv_wait(&mut self, count: usize) -> Result<(), Closed> {
+    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
         ud.receiver_waker
@@ -253,23 +333,27 @@ impl<T> Receiver<T> {
         self.consumer.refresh();
 
         if self.consumer.len() >= count {
-            return Ok(());
+            return true;
         }
 
         if self.consumer.is_closed() {
-            return Err(Closed(()));
+            return false;
         }
 
         self.try_wake_sender();
 
-        thread::park();
+        if let Some(deadline) = deadline {
+            thread::park_timeout(Instant::now().saturating_duration_since(deadline))
+        } else {
+            thread::park();
+        }
 
-        Ok(())
+        true
     }
 
     #[cold]
     #[inline(never)]
-    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<Result<(), Closed>> {
+    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool> {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
         ud.receiver_waker
@@ -280,11 +364,11 @@ impl<T> Receiver<T> {
         self.consumer.refresh();
 
         if self.consumer.len() >= count {
-            return Poll::Ready(Ok(()));
+            return Poll::Ready(true);
         }
 
         if self.consumer.is_closed() {
-            return Poll::Ready(Err(Closed(())));
+            return Poll::Ready(false);
         }
 
         self.try_wake_sender();
@@ -293,45 +377,69 @@ impl<T> Receiver<T> {
     }
 
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        let value = self.consumer.pop()?;
+        let value = self.consumer.pop().map_err(|e| match e {
+            PopError::Empty => TryRecvError::Empty,
+            PopError::Closed => TryRecvError::Closed,
+        })?;
+
         self.recv_success();
+
         Ok(value)
     }
 
-    pub fn recv(&mut self) -> Result<T, Closed> {
+    fn recv_deadline(&mut self, deadline: Option<Instant>) -> Result<T, TryRecvError> {
         let backoff = Backoff::new();
 
         loop {
             match self.try_recv() {
                 Ok(v) => return Ok(v),
-                Err(PopError::Closed) => return Err(Closed(())),
-                Err(PopError::Empty) => {
+                Err(TryRecvError::Closed) => return Err(TryRecvError::Closed),
+                Err(TryRecvError::Empty) => {
+                    if let Some(deadline) = deadline {
+                        if Instant::now() > deadline {
+                            return Err(TryRecvError::Empty);
+                        }
+                    }
+
                     #[cfg(not(loom))]
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        self.recv_wait(1)?;
+                        if !self.recv_wait(1, deadline) {
+                            return Err(TryRecvError::Closed);
+                        }
                     }
                 }
             }
         }
     }
 
-    pub fn recv_async(&mut self) -> impl Future<Output = Result<T, Closed>> + '_ {
+    pub fn recv(&mut self) -> Result<T, RecvError> {
+        self.recv_deadline(None).map_err(|e| match e {
+            TryRecvError::Empty => unreachable!(),
+            TryRecvError::Closed => RecvError::Closed,
+        })
+    }
+
+    pub fn recv_timeout(&mut self, timeout: Duration) -> Result<T, TryRecvError> {
+        self.recv_deadline(Some(Instant::now() + timeout))
+    }
+
+    pub fn recv_async(&mut self) -> impl Future<Output = Result<T, RecvError>> + '_ {
         let backoff = Backoff::new();
 
         std::future::poll_fn(move |ctx| loop {
             match self.try_recv() {
                 Ok(v) => return Poll::Ready(Ok(v)),
-                Err(PopError::Closed) => return Poll::Ready(Err(Closed(()))),
-                Err(PopError::Empty) => {
+                Err(TryRecvError::Closed) => return Poll::Ready(Err(RecvError::Closed)),
+                Err(TryRecvError::Empty) => {
                     #[cfg(not(loom))]
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
                         match self.recv_wait_async(1, ctx) {
-                            Poll::Ready(Ok(_)) => {}
-                            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+                            Poll::Ready(true) => {}
+                            Poll::Ready(false) => return Poll::Ready(Err(RecvError::Closed)),
                             Poll::Pending => return Poll::Pending,
                         }
                     }
@@ -344,12 +452,21 @@ impl<T> Receiver<T> {
     where
         T: Copy,
     {
-        self.consumer.pop_slice(slice)?;
+        self.consumer.pop_slice(slice).map_err(|e| match e {
+            PopError::Empty => TryRecvError::Empty,
+            PopError::Closed => TryRecvError::Closed,
+        })?;
+
         self.recv_success();
+
         Ok(())
     }
 
-    pub fn recv_slice(&mut self, slice: &mut [T]) -> Result<(), Closed>
+    fn recv_slice_deadline(
+        &mut self,
+        slice: &mut [T],
+        deadline: Option<Instant>,
+    ) -> Result<(), TryRecvError>
     where
         T: Copy,
     {
@@ -358,16 +475,35 @@ impl<T> Receiver<T> {
         loop {
             match self.try_recv_slice(slice) {
                 Ok(()) => return Ok(()),
-                Err(PopError::Closed) => return Err(Closed(())),
-                Err(PopError::Empty) => {
+                Err(TryRecvError::Closed) => return Err(TryRecvError::Closed),
+                Err(TryRecvError::Empty) => {
+                    if let Some(deadline) = deadline {
+                        if Instant::now() > deadline {
+                            return Err(TryRecvError::Empty);
+                        }
+                    }
+
                     #[cfg(not(loom))]
                     backoff.snooze();
+
                     if backoff.is_completed() || cfg!(loom) {
-                        self.recv_wait(slice.len())?;
+                        if !self.recv_wait(slice.len(), deadline) {
+                            return Err(TryRecvError::Empty);
+                        }
                     }
                 }
             }
         }
+    }
+
+    pub fn recv_slice(&mut self, slice: &mut [T]) -> Result<(), RecvError>
+    where
+        T: Copy,
+    {
+        self.recv_slice_deadline(slice, None).map_err(|e| match e {
+            TryRecvError::Empty => unreachable!(),
+            TryRecvError::Closed => RecvError::Closed,
+        })
     }
 }
 
@@ -379,11 +515,24 @@ impl<T> Drop for Receiver<T> {
     }
 }
 
-pub type TryRecvError = PopError;
-
-/// Error returned when trying to send to or receive from a closed channel.
+/// Error returned from [`Receiver::try_recv()`].
 #[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
-pub struct Closed<T = ()>(pub T);
+pub enum TryRecvError {
+    /// The channel is empty, try again later.
+    #[error("empty")]
+    Empty,
+    /// The channel is closed.
+    #[error("closed")]
+    Closed,
+}
+
+/// Error returned from [`Receiver::recv()`].
+#[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
+pub enum RecvError {
+    /// The channel is closed.
+    #[error("closed")]
+    Closed,
+}
 
 #[cold]
 #[inline(never)]
@@ -419,7 +568,7 @@ mod tests {
         assert_eq!(receiver.recv(), Ok(3));
         assert_eq!(receiver.recv(), Ok(4));
 
-        assert_eq!(receiver.recv(), Err(Closed(())));
+        assert_eq!(receiver.recv(), Err(RecvError::Closed));
     }
 
     #[test]
@@ -434,7 +583,7 @@ mod tests {
         assert_eq!(receiver.recv_slice(&mut buf), Ok(()));
         assert_eq!(buf, [1, 2, 3, 4]);
 
-        assert_eq!(receiver.recv(), Err(Closed(())));
+        assert_eq!(receiver.recv(), Err(RecvError::Closed));
     }
 
     fn concurrent() {

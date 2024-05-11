@@ -659,7 +659,7 @@ unsafe fn drop_buffer<T, U, B: Buffer<T, U>>(
 /// Error returned from [`Consumer::pop()`].
 #[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
 pub enum PopError {
-    /// The buffer is full, try again later.
+    /// The buffer is empty, try again later.
     #[error("empty")]
     Empty,
     /// The buffer is closed.
