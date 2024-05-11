@@ -1,8 +1,9 @@
 use std::alloc::Layout;
+use std::io;
+use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{AcqRel, Relaxed};
 use std::time::Duration;
-use std::{io, ptr};
 
 use crate::sync::shared_mem::SharedMemory;
 
@@ -29,8 +30,19 @@ impl OsEvent {
 
         unsafe {
             let state = shm.as_ptr() as *mut SharedState;
-            libc::pthread_mutex_init(&mut (*state).mutex, ptr::null());
-            libc::pthread_cond_init(&mut (*state).cond, ptr::null());
+
+            let mut attr = MaybeUninit::<libc::pthread_mutexattr_t>::uninit();
+            let attr = attr.as_mut_ptr();
+            libc::pthread_mutexattr_init(attr);
+            libc::pthread_mutexattr_setrobust(attr, libc::PTHREAD_MUTEX_ROBUST);
+            libc::pthread_mutexattr_setpshared(attr, libc::PTHREAD_PROCESS_SHARED);
+            libc::pthread_mutex_init(&mut (*state).mutex, attr);
+
+            let mut attr = MaybeUninit::<libc::pthread_condattr_t>::uninit();
+            let attr = attr.as_mut_ptr();
+            libc::pthread_condattr_setpshared(attr, libc::PTHREAD_PROCESS_SHARED);
+            libc::pthread_cond_init(&mut (*state).cond, attr);
+
             (*state).notified = false;
             (*state).refcount = AtomicUsize::new(1);
         }

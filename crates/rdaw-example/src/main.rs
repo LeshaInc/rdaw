@@ -3,18 +3,19 @@ use std::time::Duration;
 
 use rdaw_core::driver::{Channel, Driver as _, OutStreamDesc};
 use rdaw_core::graph::{CompiledNode, Graph, GraphParams, Inputs, Node, Outputs, Port};
+use rdaw_core::sync::ipc_spsc::{IpcChannel, IpcReceiver};
 use rdaw_core::sync::spsc::{self, Sender};
 use rdaw_graph::GraphImpl;
 use rdaw_pipewire::Driver;
 
 #[derive(Clone, Copy)]
-struct Sine {
+struct Saw {
     outputs: usize,
     freq: f32,
     time: f32,
 }
 
-impl Node for Sine {
+impl Node for Saw {
     fn num_audio_inputs(&self) -> usize {
         0
     }
@@ -28,7 +29,7 @@ impl Node for Sine {
     }
 }
 
-impl CompiledNode for Sine {
+impl CompiledNode for Saw {
     fn process(&mut self, params: &GraphParams, _inputs: Inputs<'_>, outputs: Outputs<'_>) {
         for i in 0..params.buffer_size {
             for buffer in outputs.audio.iter_mut() {
@@ -39,6 +40,32 @@ impl CompiledNode for Sine {
 
             self.time += 1.0;
         }
+    }
+}
+
+#[derive(Clone)]
+struct External {
+    receiver: Arc<Mutex<IpcReceiver<f32>>>,
+}
+
+impl Node for External {
+    fn num_audio_inputs(&self) -> usize {
+        0
+    }
+
+    fn num_audio_outputs(&self) -> usize {
+        1
+    }
+
+    fn compile(&self, _params: &GraphParams) -> Box<dyn CompiledNode> {
+        Box::new(self.clone())
+    }
+}
+
+impl CompiledNode for External {
+    fn process(&mut self, _params: &GraphParams, _inputs: Inputs<'_>, outputs: Outputs<'_>) {
+        let mut receiver = self.receiver.lock().unwrap();
+        let _ = receiver.recv_slice(&mut outputs.audio[0]);
     }
 }
 
@@ -75,6 +102,31 @@ fn main() {
     let buffer_size = 1024;
     let ring_size = buffer_size * 2;
 
+    if let Ok(id) = std::env::var("CHANNEL_ID") {
+        let mut sender = unsafe { IpcChannel::<f32>::open(&id) }
+            .unwrap()
+            .sender()
+            .unwrap();
+
+        let mut buf = vec![0.0; buffer_size];
+        let mut time = 0.0;
+
+        loop {
+            for i in 0..buffer_size {
+                let x = time / (sample_rate as f32) * 40.0;
+                let y = 2.0 * (x - (0.5 + x).floor());
+                buf[i] = y * 0.5;
+                time += 1.0;
+            }
+
+            if sender.send_slice(&buf).is_err() {
+                break;
+            }
+        }
+
+        return;
+    }
+
     let (left_sender, mut left_receiver) = spsc::channel(ring_size);
     let (right_sender, mut right_receiver) = spsc::channel(ring_size);
 
@@ -83,16 +135,23 @@ fn main() {
         buffer_size,
     });
 
-    let sine = graph.add_node(Sine {
+    let sine = graph.add_node(Saw {
         outputs: 1,
         freq: 40.0,
         time: 0.0,
     });
 
-    let sine2 = graph.add_node(Sine {
-        outputs: 1,
-        freq: 40.0,
-        time: 0.0,
+    let channel = IpcChannel::create("rdaw", ring_size).unwrap();
+
+    std::process::Command::new(std::env::current_exe().unwrap())
+        .env("CHANNEL_ID", channel.id())
+        .spawn()
+        .unwrap();
+
+    let receiver = channel.receiver().unwrap();
+
+    let external = graph.add_node(External {
+        receiver: Arc::new(Mutex::new(receiver)),
     });
 
     let sink = graph.add_node(Sink {
@@ -103,7 +162,7 @@ fn main() {
     });
 
     graph.connect((sine, Port::Audio(0)), (sink, Port::Audio(0)));
-    graph.connect((sine2, Port::Audio(0)), (sink, Port::Audio(1)));
+    graph.connect((external, Port::Audio(0)), (sink, Port::Audio(1)));
 
     let mut compiled_graph = graph.compile();
 

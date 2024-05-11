@@ -97,6 +97,9 @@ pub struct IpcBuffer<T, U> {
     marker: PhantomData<(T, U)>,
 }
 
+unsafe impl<T: Send + Sync, U: Send + Sync> Send for IpcBuffer<T, U> {}
+unsafe impl<T: Send + Sync, U: Send + Sync> Sync for IpcBuffer<T, U> {}
+
 impl<T: IpcSafe, U: IpcSafe> IpcBuffer<T, U> {
     fn create(prefix: &str, capacity: usize, userdata: U) -> io::Result<Self> {
         let layout = Self::layout(capacity);

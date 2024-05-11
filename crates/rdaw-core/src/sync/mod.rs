@@ -14,3 +14,5 @@ pub mod spsc;
 pub unsafe trait IpcSafe {}
 
 unsafe impl IpcSafe for u8 {}
+
+unsafe impl IpcSafe for f32 {}

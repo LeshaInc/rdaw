@@ -20,6 +20,10 @@ pub struct OsShm {
     owner: bool,
 }
 
+unsafe impl Send for OsShm {}
+
+unsafe impl Sync for OsShm {}
+
 impl OsShm {
     pub fn create(prefix: &str, size: usize) -> io::Result<OsShm> {
         let mut rng = rand::thread_rng();

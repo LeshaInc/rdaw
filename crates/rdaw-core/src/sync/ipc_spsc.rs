@@ -21,9 +21,9 @@ impl<T: IpcSafe> IpcChannel<T> {
     pub fn create(prefix: &str, capacity: usize) -> io::Result<Self> {
         let state = SharedState {
             sender_waiting_len: CachePadded::new(AtomicUsize::new(0)),
-            sender_event_id: UnsafeCell::new([0; 255]),
+            sender_event_id: UnsafeCell::new((0, [0; 255])),
             receiver_waiting_len: CachePadded::new(AtomicUsize::new(0)),
-            receiver_event_id: UnsafeCell::new([0; 255]),
+            receiver_event_id: UnsafeCell::new((0, [0; 255])),
         };
         let ring = IpcRing::create(prefix, capacity, state)?;
         Ok(Self { ring })
@@ -43,32 +43,34 @@ impl<T: IpcSafe> IpcChannel<T> {
         self.ring.id()
     }
 
-    pub fn sender(self) -> io::Result<Sender<T>> {
+    pub fn sender(self) -> io::Result<IpcSender<T>> {
         let sender_event = Event::create(self.ring.prefix())?;
+        let id = sender_event.id();
         let producer = self.ring.producer();
 
         unsafe {
             let event_id = producer.userdata().sender_event_id.get();
-            *event_id = str_to_array(sender_event.id());
+            *event_id = (id.len(), str_to_array(id));
         }
 
-        Ok(Sender {
+        Ok(IpcSender {
             producer,
             sender_event,
             receiver_event: None,
         })
     }
 
-    pub fn receiver(self) -> io::Result<Receiver<T>> {
+    pub fn receiver(self) -> io::Result<IpcReceiver<T>> {
         let receiver_event = Event::create(self.ring.prefix())?;
+        let id = receiver_event.id();
         let consumer = self.ring.consumer();
 
         unsafe {
             let event_id = consumer.userdata().receiver_event_id.get();
-            *event_id = str_to_array(receiver_event.id());
+            *event_id = (id.len(), str_to_array(id));
         }
 
-        Ok(Receiver {
+        Ok(IpcReceiver {
             consumer,
             sender_event: None,
             receiver_event,
@@ -78,13 +80,15 @@ impl<T: IpcSafe> IpcChannel<T> {
 
 struct SharedState {
     sender_waiting_len: CachePadded<AtomicUsize>,
-    sender_event_id: UnsafeCell<[u8; 255]>,
+    sender_event_id: UnsafeCell<(usize, [u8; 255])>,
     receiver_waiting_len: CachePadded<AtomicUsize>,
-    receiver_event_id: UnsafeCell<[u8; 255]>,
+    receiver_event_id: UnsafeCell<(usize, [u8; 255])>,
 }
 
 /// SAFETY: Storing only POD types
 unsafe impl IpcSafe for SharedState {}
+unsafe impl Send for SharedState {}
+unsafe impl Sync for SharedState {}
 
 fn str_to_array(str: &str) -> [u8; 255] {
     let mut array = [0; 255];
@@ -92,13 +96,13 @@ fn str_to_array(str: &str) -> [u8; 255] {
     array
 }
 
-pub struct Sender<T: IpcSafe> {
+pub struct IpcSender<T: IpcSafe> {
     producer: Producer<T, SharedState, IpcBuffer<T, SharedState>>,
     sender_event: Event,
     receiver_event: Option<Event>,
 }
 
-impl<T: IpcSafe> Sender<T> {
+impl<T: IpcSafe> IpcSender<T> {
     fn try_wake_receiver(&mut self) {
         if self.producer.len() >= self.producer.userdata().receiver_waiting_len.load(Acquire) {
             self.wake_receiver();
@@ -110,8 +114,8 @@ impl<T: IpcSafe> Sender<T> {
     fn wake_receiver(&mut self) {
         if self.receiver_event.is_none() {
             let ud = self.producer.userdata();
-            let id_arr = unsafe { &*ud.receiver_event_id.get() };
-            let id = std::str::from_utf8(id_arr).unwrap();
+            let (id_len, id_arr) = unsafe { &*ud.receiver_event_id.get() };
+            let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
             let event = unsafe { Event::open(id) }.unwrap();
             self.receiver_event = Some(event);
         }
@@ -211,7 +215,7 @@ impl<T: IpcSafe> Sender<T> {
     }
 }
 
-impl<T: IpcSafe> Drop for Sender<T> {
+impl<T: IpcSafe> Drop for IpcSender<T> {
     fn drop(&mut self) {
         self.producer.close();
         fence(SeqCst);
@@ -221,13 +225,13 @@ impl<T: IpcSafe> Drop for Sender<T> {
 
 pub type TrySendError<T> = PushError<T>;
 
-pub struct Receiver<T: IpcSafe> {
+pub struct IpcReceiver<T: IpcSafe> {
     consumer: Consumer<T, SharedState, IpcBuffer<T, SharedState>>,
     sender_event: Option<Event>,
     receiver_event: Event,
 }
 
-impl<T: IpcSafe> Receiver<T> {
+impl<T: IpcSafe> IpcReceiver<T> {
     fn try_wake_sender(&mut self) {
         let free_space = self.consumer.capacity() - self.consumer.len();
         if free_space >= self.consumer.userdata().sender_waiting_len.load(Acquire) {
@@ -240,8 +244,8 @@ impl<T: IpcSafe> Receiver<T> {
     fn wake_sender(&mut self) {
         if self.sender_event.is_none() {
             let ud = self.consumer.userdata();
-            let id_arr = unsafe { &*ud.sender_event_id.get() };
-            let id = std::str::from_utf8(id_arr).unwrap();
+            let (id_len, id_arr) = unsafe { &*ud.sender_event_id.get() };
+            let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
             let event = unsafe { Event::open(id) }.unwrap();
             self.sender_event = Some(event);
         }
@@ -335,7 +339,7 @@ impl<T: IpcSafe> Receiver<T> {
     }
 }
 
-impl<T: IpcSafe> Drop for Receiver<T> {
+impl<T: IpcSafe> Drop for IpcReceiver<T> {
     fn drop(&mut self) {
         self.consumer.close();
         fence(SeqCst);
