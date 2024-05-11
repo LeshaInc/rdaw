@@ -7,23 +7,23 @@ use self::unix::OsEvent;
 mod unix;
 
 /// Event object for notifying other processes.
-pub struct Event(OsEvent);
+pub struct NamedEvent(OsEvent);
 
-impl Event {
+impl NamedEvent {
     /// Creates an event object with a specified ID prefix.
     ///
     /// The rest of the ID will be randomly generated.
-    pub fn create(prefix: &str) -> io::Result<Event> {
-        OsEvent::create(prefix).map(Event)
+    pub fn create(prefix: &str) -> io::Result<NamedEvent> {
+        OsEvent::create(prefix).map(NamedEvent)
     }
 
     /// Opens an event object by ID.
     ///
     /// # Safety
     ///
-    /// ID must be obtained by [`Event::id`]
-    pub unsafe fn open(id: &str) -> io::Result<Event> {
-        OsEvent::open(id).map(Event)
+    /// ID must be obtained by [`NamedEvent::id`]
+    pub unsafe fn open(id: &str) -> io::Result<NamedEvent> {
+        OsEvent::open(id).map(NamedEvent)
     }
 
     pub fn id(&self) -> &str {

@@ -1,9 +1,10 @@
-pub mod ipc_event;
-pub mod ipc_ring;
-pub mod ipc_spsc;
+mod named_event;
 pub mod ring;
-pub mod shared_mem;
+mod shared_mem;
 pub mod spsc;
+
+pub use self::named_event::NamedEvent;
+pub use self::shared_mem::SharedMemory;
 
 /// Marker trait for types which can be safely shared between processes
 ///

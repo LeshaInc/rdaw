@@ -3,8 +3,7 @@ use std::time::Duration;
 
 use rdaw_core::driver::{Channel, Driver as _, OutStreamDesc};
 use rdaw_core::graph::{CompiledNode, Graph, GraphParams, Inputs, Node, Outputs, Port};
-use rdaw_core::sync::ipc_spsc::{IpcChannel, IpcReceiver};
-use rdaw_core::sync::spsc::{self, Sender};
+use rdaw_core::sync::spsc::{self, IpcChannel, IpcReceiver, Sender};
 use rdaw_graph::GraphImpl;
 use rdaw_pipewire::Driver;
 

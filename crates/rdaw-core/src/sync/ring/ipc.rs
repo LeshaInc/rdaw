@@ -2,14 +2,23 @@ use std::alloc::Layout;
 use std::io;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
+#[cfg(not(loom))]
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
+#[cfg(not(loom))]
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize};
 
 use crossbeam_utils::CachePadded;
+#[cfg(loom)]
+use loom::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
+#[cfg(loom)]
+use loom::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize};
 
-use super::ring::{Buffer, Consumer, Producer};
-use super::shared_mem::SharedMemory;
-use super::IpcSafe;
+use super::{Buffer, Consumer, Producer};
+use crate::sync::{IpcSafe, SharedMemory};
+
+pub type IpcProducer<T, U = ()> = Producer<T, U, IpcBuffer<T, U>>;
+
+pub type IpcConsumer<T, U = ()> = Consumer<T, U, IpcBuffer<T, U>>;
 
 pub struct IpcRing<T, U> {
     buffer: Option<IpcBuffer<T, U>>,
@@ -51,7 +60,7 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
         buffer.header().producer_created.load(Acquire)
     }
 
-    pub fn producer(mut self) -> Producer<T, U, IpcBuffer<T, U>> {
+    pub fn producer(mut self) -> IpcProducer<T, U> {
         let buffer = self.buffer.take().unwrap();
 
         if buffer.header().producer_created.swap(true, AcqRel) {
@@ -68,7 +77,7 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
         buffer.header().consumer_created.load(Acquire)
     }
 
-    pub fn consumer(mut self) -> Consumer<T, U, IpcBuffer<T, U>> {
+    pub fn consumer(mut self) -> IpcConsumer<T, U> {
         let buffer = self.buffer.take().unwrap();
 
         if buffer.header().consumer_created.swap(true, AcqRel) {

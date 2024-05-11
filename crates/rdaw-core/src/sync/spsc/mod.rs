@@ -1,137 +1,62 @@
+mod ipc;
+mod local;
+
 use std::future::Future;
-#[cfg(not(loom))]
-use std::sync::atomic::Ordering::{Acquire, Release, SeqCst};
-#[cfg(not(loom))]
-use std::sync::atomic::{fence, AtomicUsize};
-use std::task::{Context, Poll, Waker};
-#[cfg(not(loom))]
-use std::thread::{self, Thread};
+use std::marker::PhantomData;
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use crossbeam_utils::atomic::AtomicCell;
-use crossbeam_utils::{Backoff, CachePadded};
-#[cfg(loom)]
-use loom::sync::atomic::Ordering::{Acquire, Release, SeqCst};
-#[cfg(loom)]
-use loom::sync::atomic::{fence, AtomicUsize};
-#[cfg(loom)]
-use loom::thread::{self, Thread};
+use crossbeam_utils::Backoff;
 
-use super::ring::{buffer_with_userdata, Consumer, PopError, Producer, PushError};
+pub use self::ipc::{IpcChannel, IpcReceiver, IpcSender, RawIpcReceiver, RawIpcSender};
+pub use self::local::{RawLocalReceiver, RawLocalSender};
 
 pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
-    let (producer, consumer) = buffer_with_userdata(capacity, SharedState::default());
-    (Sender { producer }, Receiver { consumer })
+    let (raw_sender, raw_receiver) = self::local::channel(capacity);
+    (
+        Sender {
+            raw: raw_sender,
+            marker: PhantomData,
+        },
+        Receiver {
+            raw: raw_receiver,
+            marker: PhantomData,
+        },
+    )
 }
 
-#[derive(Default)]
-struct SharedState {
-    sender_waiting_len: CachePadded<AtomicUsize>,
-    sender_waker: AtomicCell<Option<AnyWaker>>,
-    receiver_waiting_len: CachePadded<AtomicUsize>,
-    receiver_waker: AtomicCell<Option<AnyWaker>>,
+pub trait RawSender<T> {
+    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool;
+
+    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool>;
+
+    fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>>;
+
+    fn try_send_slice(&mut self, slice: &[T]) -> Result<(), TrySendError<()>>
+    where
+        T: Copy;
 }
 
-enum AnyWaker {
-    Sync(Thread),
-    Async(Waker),
+pub trait RawReceiver<T> {
+    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool;
+
+    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool>;
+
+    fn try_recv(&mut self) -> Result<T, TryRecvError>;
+
+    fn try_recv_slice(&mut self, slice: &mut [T]) -> Result<(), TryRecvError>
+    where
+        T: Copy;
 }
 
-impl AnyWaker {
-    fn wake(self) {
-        match self {
-            AnyWaker::Sync(thread) => thread.unpark(),
-            AnyWaker::Async(waker) => waker.wake(),
-        }
-    }
+pub struct Sender<T, R: RawSender<T> = RawLocalSender<T>> {
+    raw: R,
+    marker: PhantomData<T>,
 }
 
-pub struct Sender<T> {
-    producer: Producer<T, SharedState>,
-}
-
-impl<T> Sender<T> {
-    fn try_wake_receiver(&self) {
-        if self.producer.len() >= self.producer.userdata().receiver_waiting_len.load(Acquire) {
-            self.wake_receiver();
-        }
-    }
-
-    fn wake_receiver(&self) {
-        wake(&self.producer.userdata().receiver_waker);
-    }
-
-    fn send_success(&mut self) {
-        let ud = self.producer.userdata();
-        ud.sender_waiting_len.store(0, Release);
-        self.try_wake_receiver();
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
-        let ud = self.producer.userdata();
-        ud.sender_waiting_len.store(count, Release);
-        ud.sender_waker
-            .store(Some(AnyWaker::Sync(thread::current())));
-
-        fence(SeqCst);
-
-        self.producer.refresh();
-
-        if self.producer.capacity() - self.producer.len() >= count {
-            return true;
-        }
-
-        if self.producer.is_closed() {
-            return false;
-        }
-
-        self.try_wake_receiver();
-
-        if let Some(deadline) = deadline {
-            thread::park_timeout(Instant::now().saturating_duration_since(deadline))
-        } else {
-            thread::park();
-        }
-
-        true
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool> {
-        let ud = self.producer.userdata();
-        ud.sender_waiting_len.store(count, Release);
-        ud.sender_waker
-            .store(Some(AnyWaker::Async(context.waker().clone())));
-
-        fence(SeqCst);
-
-        self.producer.refresh();
-
-        if self.producer.capacity() - self.producer.len() >= count {
-            return Poll::Ready(true);
-        }
-
-        if self.producer.is_closed() {
-            return Poll::Ready(false);
-        }
-
-        self.try_wake_receiver();
-
-        Poll::Pending
-    }
-
+impl<T, R: RawSender<T>> Sender<T, R> {
     pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
-        self.producer.push(value).map_err(|e| match e {
-            PushError::Full(v) => TrySendError::Full(v),
-            PushError::Closed(v) => TrySendError::Closed(v),
-        })?;
-
-        self.send_success();
-
-        Ok(())
+        self.raw.try_send(value)
     }
 
     fn send_deadline(
@@ -143,7 +68,7 @@ impl<T> Sender<T> {
         let backoff = Backoff::new();
 
         loop {
-            match self.try_send(value.take().unwrap()) {
+            match self.raw.try_send(value.take().unwrap()) {
                 Ok(()) => return Ok(()),
                 Err(TrySendError::Closed(v)) => return Err(TrySendError::Closed(v)),
                 Err(TrySendError::Full(v)) => {
@@ -157,7 +82,7 @@ impl<T> Sender<T> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.send_wait(1, deadline) {
+                        if !self.raw.send_wait(1, deadline) {
                             return Err(TrySendError::Closed(v));
                         }
                     }
@@ -184,7 +109,7 @@ impl<T> Sender<T> {
         let backoff = Backoff::new();
 
         std::future::poll_fn(move |ctx| loop {
-            match self.try_send(value.take().unwrap()) {
+            match self.raw.try_send(value.take().unwrap()) {
                 Ok(()) => return Poll::Ready(Ok(())),
                 Err(TrySendError::Closed(v)) => return Poll::Ready(Err(SendError::Closed(v))),
                 Err(TrySendError::Full(v)) => {
@@ -192,7 +117,7 @@ impl<T> Sender<T> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        match self.send_wait_async(1, ctx) {
+                        match self.raw.send_wait_async(1, ctx) {
                             Poll::Ready(true) => {}
                             Poll::Ready(false) => {
                                 return Poll::Ready(Err(SendError::Closed(v)));
@@ -211,14 +136,7 @@ impl<T> Sender<T> {
     where
         T: Copy,
     {
-        self.producer.push_slice(slice).map_err(|e| match e {
-            PushError::Full(v) => TrySendError::Full(v),
-            PushError::Closed(v) => TrySendError::Closed(v),
-        })?;
-
-        self.send_success();
-
-        Ok(())
+        self.raw.try_send_slice(slice)
     }
 
     fn send_slice_deadline(
@@ -232,7 +150,7 @@ impl<T> Sender<T> {
         let backoff = Backoff::new();
 
         loop {
-            match self.try_send_slice(slice) {
+            match self.raw.try_send_slice(slice) {
                 Ok(()) => return Ok(()),
                 Err(TrySendError::Closed(())) => return Err(TrySendError::Closed(())),
                 Err(TrySendError::Full(())) => {
@@ -240,7 +158,7 @@ impl<T> Sender<T> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.send_wait(slice.len(), deadline) {
+                        if !self.raw.send_wait(slice.len(), deadline) {
                             return Err(TrySendError::Closed(()));
                         }
                     }
@@ -271,14 +189,6 @@ impl<T> Sender<T> {
     }
 }
 
-impl<T> Drop for Sender<T> {
-    fn drop(&mut self) {
-        self.producer.close();
-        fence(SeqCst);
-        self.wake_receiver();
-    }
-}
-
 /// Error returned from [`Sender::try_send()`].
 #[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
 pub enum TrySendError<T> {
@@ -298,100 +208,21 @@ pub enum SendError<T> {
     Closed(T),
 }
 
-pub struct Receiver<T> {
-    consumer: Consumer<T, SharedState>,
+pub struct Receiver<T, R: RawReceiver<T> = RawLocalReceiver<T>> {
+    raw: R,
+    marker: PhantomData<T>,
 }
 
-impl<T> Receiver<T> {
-    fn try_wake_sender(&self) {
-        let free_space = self.consumer.capacity() - self.consumer.len();
-        if free_space >= self.consumer.userdata().sender_waiting_len.load(Acquire) {
-            self.wake_sender()
-        }
-    }
-
-    fn wake_sender(&self) {
-        wake(&self.consumer.userdata().sender_waker);
-    }
-
-    fn recv_success(&mut self) {
-        let ud = self.consumer.userdata();
-        ud.receiver_waiting_len.store(0, Release);
-        self.try_wake_sender();
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
-        let ud = self.consumer.userdata();
-        ud.receiver_waiting_len.store(count, Release);
-        ud.receiver_waker
-            .store(Some(AnyWaker::Sync(thread::current())));
-
-        fence(SeqCst);
-
-        self.consumer.refresh();
-
-        if self.consumer.len() >= count {
-            return true;
-        }
-
-        if self.consumer.is_closed() {
-            return false;
-        }
-
-        self.try_wake_sender();
-
-        if let Some(deadline) = deadline {
-            thread::park_timeout(Instant::now().saturating_duration_since(deadline))
-        } else {
-            thread::park();
-        }
-
-        true
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool> {
-        let ud = self.consumer.userdata();
-        ud.receiver_waiting_len.store(count, Release);
-        ud.receiver_waker
-            .store(Some(AnyWaker::Async(context.waker().clone())));
-
-        fence(SeqCst);
-
-        self.consumer.refresh();
-
-        if self.consumer.len() >= count {
-            return Poll::Ready(true);
-        }
-
-        if self.consumer.is_closed() {
-            return Poll::Ready(false);
-        }
-
-        self.try_wake_sender();
-
-        Poll::Pending
-    }
-
+impl<T, R: RawReceiver<T>> Receiver<T, R> {
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        let value = self.consumer.pop().map_err(|e| match e {
-            PopError::Empty => TryRecvError::Empty,
-            PopError::Closed => TryRecvError::Closed,
-        })?;
-
-        self.recv_success();
-
-        Ok(value)
+        self.raw.try_recv()
     }
 
     fn recv_deadline(&mut self, deadline: Option<Instant>) -> Result<T, TryRecvError> {
         let backoff = Backoff::new();
 
         loop {
-            match self.try_recv() {
+            match self.raw.try_recv() {
                 Ok(v) => return Ok(v),
                 Err(TryRecvError::Closed) => return Err(TryRecvError::Closed),
                 Err(TryRecvError::Empty) => {
@@ -405,7 +236,7 @@ impl<T> Receiver<T> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.recv_wait(1, deadline) {
+                        if !self.raw.recv_wait(1, deadline) {
                             return Err(TryRecvError::Closed);
                         }
                     }
@@ -429,7 +260,7 @@ impl<T> Receiver<T> {
         let backoff = Backoff::new();
 
         std::future::poll_fn(move |ctx| loop {
-            match self.try_recv() {
+            match self.raw.try_recv() {
                 Ok(v) => return Poll::Ready(Ok(v)),
                 Err(TryRecvError::Closed) => return Poll::Ready(Err(RecvError::Closed)),
                 Err(TryRecvError::Empty) => {
@@ -437,7 +268,7 @@ impl<T> Receiver<T> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        match self.recv_wait_async(1, ctx) {
+                        match self.raw.recv_wait_async(1, ctx) {
                             Poll::Ready(true) => {}
                             Poll::Ready(false) => return Poll::Ready(Err(RecvError::Closed)),
                             Poll::Pending => return Poll::Pending,
@@ -452,14 +283,7 @@ impl<T> Receiver<T> {
     where
         T: Copy,
     {
-        self.consumer.pop_slice(slice).map_err(|e| match e {
-            PopError::Empty => TryRecvError::Empty,
-            PopError::Closed => TryRecvError::Closed,
-        })?;
-
-        self.recv_success();
-
-        Ok(())
+        self.raw.try_recv_slice(slice)
     }
 
     fn recv_slice_deadline(
@@ -473,7 +297,7 @@ impl<T> Receiver<T> {
         let backoff = Backoff::new();
 
         loop {
-            match self.try_recv_slice(slice) {
+            match self.raw.try_recv_slice(slice) {
                 Ok(()) => return Ok(()),
                 Err(TryRecvError::Closed) => return Err(TryRecvError::Closed),
                 Err(TryRecvError::Empty) => {
@@ -487,7 +311,7 @@ impl<T> Receiver<T> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.recv_wait(slice.len(), deadline) {
+                        if !self.raw.recv_wait(slice.len(), deadline) {
                             return Err(TryRecvError::Empty);
                         }
                     }
@@ -504,14 +328,6 @@ impl<T> Receiver<T> {
             TryRecvError::Empty => unreachable!(),
             TryRecvError::Closed => RecvError::Closed,
         })
-    }
-}
-
-impl<T> Drop for Receiver<T> {
-    fn drop(&mut self) {
-        self.consumer.close();
-        fence(SeqCst);
-        self.wake_sender();
     }
 }
 
@@ -532,14 +348,6 @@ pub enum RecvError {
     /// The channel is closed.
     #[error("closed")]
     Closed,
-}
-
-#[cold]
-#[inline(never)]
-fn wake(thread: &AtomicCell<Option<AnyWaker>>) {
-    if let Some(waker) = thread.take() {
-        waker.wake();
-    }
 }
 
 #[cfg(test)]

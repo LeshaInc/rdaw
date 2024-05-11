@@ -5,10 +5,9 @@ edition = "2021"
 
 [dependencies]
 crossbeam-utils.workspace = true
-libc = "0.2.154"
-nix = { version = "0.28.0", features = ["fs", "mman"] }
-rand = "0.8.5"
-shared_memory.workspace = true
+libc.workspace = true
+nix.workspace = true
+rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

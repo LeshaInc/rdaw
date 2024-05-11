@@ -1,14 +1,20 @@
 use std::cell::UnsafeCell;
 use std::io;
+use std::marker::PhantomData;
 use std::sync::atomic::Ordering::{Acquire, Release, SeqCst};
 use std::sync::atomic::{fence, AtomicUsize};
+use std::task::{Context, Poll};
+use std::time::Instant;
 
-use crossbeam_utils::{Backoff, CachePadded};
+use crossbeam_utils::CachePadded;
 
-use super::ipc_event::Event;
-use super::ipc_ring::{IpcBuffer, IpcRing};
-use super::ring::{Consumer, PopError, Producer, PushError};
-use super::IpcSafe;
+use super::{RawReceiver, RawSender, Receiver, Sender, TryRecvError, TrySendError};
+use crate::sync::ring::{IpcConsumer, IpcProducer, IpcRing, PopError, PushError};
+use crate::sync::{IpcSafe, NamedEvent};
+
+pub type IpcSender<T> = Sender<T, RawIpcSender<T>>;
+
+pub type IpcReceiver<T> = Receiver<T, RawIpcReceiver<T>>;
 
 pub struct IpcChannel<T> {
     ring: IpcRing<T, SharedState>,
@@ -44,7 +50,7 @@ impl<T: IpcSafe> IpcChannel<T> {
     }
 
     pub fn sender(self) -> io::Result<IpcSender<T>> {
-        let sender_event = Event::create(self.ring.prefix())?;
+        let sender_event = NamedEvent::create(self.ring.prefix())?;
         let id = sender_event.id();
         let producer = self.ring.producer();
 
@@ -53,15 +59,18 @@ impl<T: IpcSafe> IpcChannel<T> {
             *event_id = (id.len(), str_to_array(id));
         }
 
-        Ok(IpcSender {
-            producer,
-            sender_event,
-            receiver_event: None,
+        Ok(Sender {
+            raw: RawIpcSender {
+                producer,
+                sender_event,
+                receiver_event: None,
+            },
+            marker: PhantomData,
         })
     }
 
     pub fn receiver(self) -> io::Result<IpcReceiver<T>> {
-        let receiver_event = Event::create(self.ring.prefix())?;
+        let receiver_event = NamedEvent::create(self.ring.prefix())?;
         let id = receiver_event.id();
         let consumer = self.ring.consumer();
 
@@ -70,10 +79,13 @@ impl<T: IpcSafe> IpcChannel<T> {
             *event_id = (id.len(), str_to_array(id));
         }
 
-        Ok(IpcReceiver {
-            consumer,
-            sender_event: None,
-            receiver_event,
+        Ok(Receiver {
+            raw: RawIpcReceiver {
+                consumer,
+                sender_event: None,
+                receiver_event,
+            },
+            marker: PhantomData,
         })
     }
 }
@@ -96,27 +108,25 @@ fn str_to_array(str: &str) -> [u8; 255] {
     array
 }
 
-pub struct IpcSender<T: IpcSafe> {
-    producer: Producer<T, SharedState, IpcBuffer<T, SharedState>>,
-    sender_event: Event,
-    receiver_event: Option<Event>,
+pub struct RawIpcSender<T: IpcSafe> {
+    producer: IpcProducer<T, SharedState>,
+    sender_event: NamedEvent,
+    receiver_event: Option<NamedEvent>,
 }
 
-impl<T: IpcSafe> IpcSender<T> {
+impl<T: IpcSafe> RawIpcSender<T> {
     fn try_wake_receiver(&mut self) {
         if self.producer.len() >= self.producer.userdata().receiver_waiting_len.load(Acquire) {
             self.wake_receiver();
         }
     }
 
-    #[cold]
-    #[inline(never)]
     fn wake_receiver(&mut self) {
         if self.receiver_event.is_none() {
             let ud = self.producer.userdata();
             let (id_len, id_arr) = unsafe { &*ud.receiver_event_id.get() };
             let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
-            let event = unsafe { Event::open(id) }.unwrap();
+            let event = unsafe { NamedEvent::open(id) }.unwrap();
             self.receiver_event = Some(event);
         }
 
@@ -128,10 +138,11 @@ impl<T: IpcSafe> IpcSender<T> {
         ud.sender_waiting_len.store(0, Release);
         self.try_wake_receiver();
     }
+}
 
-    #[cold]
+impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
     #[inline(never)]
-    fn send_wait(&mut self, count: usize) -> Result<(), Closed<()>> {
+    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
 
@@ -140,82 +151,56 @@ impl<T: IpcSafe> IpcSender<T> {
         self.producer.refresh();
 
         if self.producer.capacity() - self.producer.len() >= count {
-            return Ok(());
+            return true;
         }
 
         if self.producer.is_closed() {
-            return Err(Closed(()));
+            return false;
         }
 
         self.try_wake_receiver();
-        self.sender_event.wait();
 
-        Ok(())
-    }
-
-    pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
-        self.producer.push(value)?;
-        self.send_success();
-        Ok(())
-    }
-
-    pub fn send(&mut self, value: T) -> Result<(), Closed<T>> {
-        let mut value = Some(value);
-        let backoff = Backoff::new();
-
-        loop {
-            match self.try_send(value.take().unwrap()) {
-                Ok(()) => return Ok(()),
-                Err(PushError::Closed(v)) => return Err(Closed(v)),
-                Err(PushError::Full(v)) => {
-                    #[cfg(not(loom))]
-                    backoff.snooze();
-
-                    if backoff.is_completed() || cfg!(loom) {
-                        if let Err(Closed(())) = self.send_wait(1) {
-                            return Err(Closed(v));
-                        }
-                    }
-
-                    value = Some(v);
-                }
-            }
+        if let Some(deadline) = deadline {
+            self.sender_event
+                .wait_timeout(Instant::now().saturating_duration_since(deadline));
+        } else {
+            self.sender_event.wait();
         }
+
+        true
     }
 
-    pub fn try_send_slice(&mut self, slice: &[T]) -> Result<(), TrySendError<()>>
+    fn send_wait_async(&mut self, _count: usize, _context: &Context) -> Poll<bool> {
+        todo!()
+    }
+
+    fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
+        self.producer.push(value).map_err(|e| match e {
+            PushError::Full(v) => TrySendError::Full(v),
+            PushError::Closed(v) => TrySendError::Closed(v),
+        })?;
+
+        self.send_success();
+
+        Ok(())
+    }
+
+    fn try_send_slice(&mut self, slice: &[T]) -> Result<(), TrySendError<()>>
     where
         T: Copy,
     {
-        self.producer.push_slice(slice)?;
+        self.producer.push_slice(slice).map_err(|e| match e {
+            PushError::Full(v) => TrySendError::Full(v),
+            PushError::Closed(v) => TrySendError::Closed(v),
+        })?;
+
         self.send_success();
+
         Ok(())
-    }
-
-    pub fn send_slice(&mut self, slice: &[T]) -> Result<(), Closed>
-    where
-        T: Copy,
-    {
-        let backoff = Backoff::new();
-
-        loop {
-            match self.try_send_slice(slice) {
-                Ok(()) => return Ok(()),
-                Err(PushError::Closed(())) => return Err(Closed(())),
-                Err(PushError::Full(())) => {
-                    #[cfg(not(loom))]
-                    backoff.snooze();
-
-                    if backoff.is_completed() || cfg!(loom) {
-                        self.send_wait(slice.len())?;
-                    }
-                }
-            }
-        }
     }
 }
 
-impl<T: IpcSafe> Drop for IpcSender<T> {
+impl<T: IpcSafe> Drop for RawIpcSender<T> {
     fn drop(&mut self) {
         self.producer.close();
         fence(SeqCst);
@@ -223,15 +208,13 @@ impl<T: IpcSafe> Drop for IpcSender<T> {
     }
 }
 
-pub type TrySendError<T> = PushError<T>;
-
-pub struct IpcReceiver<T: IpcSafe> {
-    consumer: Consumer<T, SharedState, IpcBuffer<T, SharedState>>,
-    sender_event: Option<Event>,
-    receiver_event: Event,
+pub struct RawIpcReceiver<T: IpcSafe> {
+    consumer: IpcConsumer<T, SharedState>,
+    sender_event: Option<NamedEvent>,
+    receiver_event: NamedEvent,
 }
 
-impl<T: IpcSafe> IpcReceiver<T> {
+impl<T: IpcSafe> RawIpcReceiver<T> {
     fn try_wake_sender(&mut self) {
         let free_space = self.consumer.capacity() - self.consumer.len();
         if free_space >= self.consumer.userdata().sender_waiting_len.load(Acquire) {
@@ -239,14 +222,12 @@ impl<T: IpcSafe> IpcReceiver<T> {
         }
     }
 
-    #[cold]
-    #[inline(never)]
     fn wake_sender(&mut self) {
         if self.sender_event.is_none() {
             let ud = self.consumer.userdata();
             let (id_len, id_arr) = unsafe { &*ud.sender_event_id.get() };
             let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
-            let event = unsafe { Event::open(id) }.unwrap();
+            let event = unsafe { NamedEvent::open(id) }.unwrap();
             self.sender_event = Some(event);
         }
 
@@ -258,10 +239,11 @@ impl<T: IpcSafe> IpcReceiver<T> {
         ud.receiver_waiting_len.store(0, Release);
         self.try_wake_sender();
     }
+}
 
-    #[cold]
+impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
     #[inline(never)]
-    fn recv_wait(&mut self, count: usize) -> Result<(), Closed> {
+    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
 
@@ -270,85 +252,59 @@ impl<T: IpcSafe> IpcReceiver<T> {
         self.consumer.refresh();
 
         if self.consumer.len() >= count {
-            return Ok(());
+            return true;
         }
 
         if self.consumer.is_closed() {
-            return Err(Closed(()));
+            return false;
         }
 
         self.try_wake_sender();
-        self.receiver_event.wait();
 
-        Ok(())
+        if let Some(deadline) = deadline {
+            self.receiver_event
+                .wait_timeout(Instant::now().saturating_duration_since(deadline));
+        } else {
+            self.receiver_event.wait();
+        }
+
+        true
     }
 
-    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        let value = self.consumer.pop()?;
+    fn recv_wait_async(&mut self, _count: usize, _context: &Context) -> Poll<bool> {
+        todo!()
+    }
+
+    fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        let value = self.consumer.pop().map_err(|e| match e {
+            PopError::Empty => TryRecvError::Empty,
+            PopError::Closed => TryRecvError::Closed,
+        })?;
+
         self.recv_success();
+
         Ok(value)
     }
 
-    pub fn recv(&mut self) -> Result<T, Closed> {
-        let backoff = Backoff::new();
-
-        loop {
-            match self.try_recv() {
-                Ok(v) => return Ok(v),
-                Err(PopError::Closed) => return Err(Closed(())),
-                Err(PopError::Empty) => {
-                    #[cfg(not(loom))]
-                    backoff.snooze();
-
-                    if backoff.is_completed() || cfg!(loom) {
-                        self.recv_wait(1)?;
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn try_recv_slice(&mut self, slice: &mut [T]) -> Result<(), TryRecvError>
+    fn try_recv_slice(&mut self, slice: &mut [T]) -> Result<(), TryRecvError>
     where
         T: Copy,
     {
-        self.consumer.pop_slice(slice)?;
+        self.consumer.pop_slice(slice).map_err(|e| match e {
+            PopError::Empty => TryRecvError::Empty,
+            PopError::Closed => TryRecvError::Closed,
+        })?;
+
         self.recv_success();
+
         Ok(())
-    }
-
-    pub fn recv_slice(&mut self, slice: &mut [T]) -> Result<(), Closed>
-    where
-        T: Copy,
-    {
-        let backoff = Backoff::new();
-
-        loop {
-            match self.try_recv_slice(slice) {
-                Ok(()) => return Ok(()),
-                Err(PopError::Closed) => return Err(Closed(())),
-                Err(PopError::Empty) => {
-                    #[cfg(not(loom))]
-                    backoff.snooze();
-                    if backoff.is_completed() || cfg!(loom) {
-                        self.recv_wait(slice.len())?;
-                    }
-                }
-            }
-        }
     }
 }
 
-impl<T: IpcSafe> Drop for IpcReceiver<T> {
+impl<T: IpcSafe> Drop for RawIpcReceiver<T> {
     fn drop(&mut self) {
         self.consumer.close();
         fence(SeqCst);
         self.wake_sender();
     }
 }
-
-pub type TryRecvError = PopError;
-
-/// Error returned when trying to send to or receive from a closed channel.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
-pub struct Closed<T = ()>(pub T);
