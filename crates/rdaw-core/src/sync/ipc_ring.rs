@@ -26,7 +26,7 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
         })
     }
 
-    /// Opens an event object by ID.
+    /// Opens an ring buffer by ID.
     ///
     /// # Safety
     ///
