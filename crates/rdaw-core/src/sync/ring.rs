@@ -198,7 +198,7 @@ pub struct Producer<T, U = (), B: Buffer<T, U> = ProcessLocalBuffer<T, U>> {
 
 impl<T, U, B: Buffer<T, U>> Producer<T, U, B> {
     /// SAFETY: assuming `read_state == write_state == 0`.
-    unsafe fn new(buffer: ManuallyDrop<B>) -> Producer<T, U, B> {
+    pub(super) unsafe fn new(buffer: ManuallyDrop<B>) -> Producer<T, U, B> {
         Producer {
             buffer,
             closed: false,
@@ -429,7 +429,7 @@ pub struct Consumer<T, U = (), B: Buffer<T, U> = ProcessLocalBuffer<T, U>> {
 
 impl<T, U, B: Buffer<T, U>> Consumer<T, U, B> {
     /// SAFETY: assuming `read_state == write_state == 0`
-    unsafe fn new(buffer: ManuallyDrop<B>) -> Consumer<T, U, B> {
+    pub(super) unsafe fn new(buffer: ManuallyDrop<B>) -> Consumer<T, U, B> {
         Consumer {
             buffer,
             closed: false,
