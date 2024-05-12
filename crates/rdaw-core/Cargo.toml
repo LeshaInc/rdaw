@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-crossbeam-deque = "0.8.5"
-crossbeam-queue = "0.3.11"
+crossbeam-queue.workspace = true
 crossbeam-utils.workspace = true
 libc.workspace = true
 nix.workspace = true
