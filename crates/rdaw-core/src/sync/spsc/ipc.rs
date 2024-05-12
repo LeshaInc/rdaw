@@ -125,6 +125,9 @@ impl<T: IpcSafe> RawIpcSender<T> {
         if self.receiver_event.is_none() {
             let ud = self.producer.userdata();
             let (id_len, id_arr) = unsafe { &*ud.receiver_event_id.get() };
+            if *id_len == 0 {
+                return;
+            }
             let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
             let event = unsafe { NamedEvent::open(id) }.unwrap();
             self.receiver_event = Some(event);
@@ -170,8 +173,24 @@ impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
         true
     }
 
-    fn send_wait_async(&mut self, _count: usize, _context: &Context) -> Poll<bool> {
-        todo!()
+    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<bool> {
+        let ud = self.producer.userdata();
+        ud.sender_waiting_len.store(count, Release);
+
+        fence(SeqCst);
+
+        self.producer.refresh();
+
+        if self.producer.capacity() - self.producer.len() >= count {
+            return Poll::Ready(true);
+        }
+
+        if self.producer.is_closed() {
+            return Poll::Ready(false);
+        }
+
+        self.try_wake_receiver();
+        self.sender_event.poll_wait(context).map(|_| true)
     }
 
     fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
@@ -226,6 +245,9 @@ impl<T: IpcSafe> RawIpcReceiver<T> {
         if self.sender_event.is_none() {
             let ud = self.consumer.userdata();
             let (id_len, id_arr) = unsafe { &*ud.sender_event_id.get() };
+            if *id_len == 0 {
+                return;
+            }
             let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
             let event = unsafe { NamedEvent::open(id) }.unwrap();
             self.sender_event = Some(event);

@@ -97,8 +97,10 @@ impl CompiledNode for Sink {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let sample_rate = 48000;
-    let buffer_size = 1024;
+    let buffer_size = 128;
     let ring_size = buffer_size * 2;
 
     if let Ok(id) = std::env::var("CHANNEL_ID") {
@@ -109,6 +111,13 @@ fn main() {
 
         let mut buf = vec![0.0; buffer_size];
         let mut time = 0.0;
+
+        if let Err(e) = audio_thread_priority::promote_current_thread_to_real_time(
+            buffer_size as u32,
+            sample_rate,
+        ) {
+            eprintln!("{e}");
+        }
 
         loop {
             for i in 0..buffer_size {
@@ -201,5 +210,5 @@ fn main() {
         })
         .unwrap();
 
-    std::thread::sleep(Duration::from_secs(20));
+    std::thread::sleep(Duration::from_secs(5));
 }

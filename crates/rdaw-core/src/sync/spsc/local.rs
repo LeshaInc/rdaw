@@ -103,7 +103,7 @@ impl<T> RawSender<T> for RawLocalSender<T> {
     }
 
     #[inline(never)]
-    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool> {
+    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<bool> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
         ud.sender_waker

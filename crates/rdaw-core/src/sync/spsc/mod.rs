@@ -28,7 +28,7 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
 pub trait RawSender<T> {
     fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool;
 
-    fn send_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool>;
+    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<bool>;
 
     fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>>;
 
@@ -186,6 +186,37 @@ impl<T, R: RawSender<T>> Sender<T, R> {
         T: Copy,
     {
         self.send_slice_deadline(slice, Some(Instant::now() + timeout))
+    }
+
+    pub fn send_slice_async<'a>(
+        &'a mut self,
+        slice: &'a [T],
+    ) -> impl Future<Output = Result<(), SendError<()>>> + 'a
+    where
+        T: Copy,
+    {
+        let backoff = Backoff::new();
+
+        std::future::poll_fn(move |ctx| loop {
+            match self.raw.try_send_slice(slice) {
+                Ok(()) => return Poll::Ready(Ok(())),
+                Err(TrySendError::Closed(())) => return Poll::Ready(Err(SendError::Closed(()))),
+                Err(TrySendError::Full(())) => {
+                    #[cfg(not(loom))]
+                    backoff.snooze();
+
+                    if backoff.is_completed() || cfg!(loom) {
+                        match self.raw.send_wait_async(slice.len(), ctx) {
+                            Poll::Ready(true) => {}
+                            Poll::Ready(false) => {
+                                return Poll::Ready(Err(SendError::Closed(())));
+                            }
+                            Poll::Pending => return Poll::Pending,
+                        }
+                    }
+                }
+            }
+        })
     }
 }
 

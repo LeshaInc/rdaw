@@ -146,12 +146,12 @@ impl PwThread {
             };
 
             if class == "Audio/Sink" {
-                dbg!(props.get(&NODE_DESCRIPTION));
-                dbg!(props.get(&NODE_NAME));
-                dbg!(props.get(&NODE_NICK));
+                // dbg!(props.get(&NODE_DESCRIPTION));
+                // dbg!(props.get(&NODE_NAME));
+                // dbg!(props.get(&NODE_NICK));
             }
 
-            dbg!(obj);
+            // dbg!(obj);
         }
         // TODO
     }

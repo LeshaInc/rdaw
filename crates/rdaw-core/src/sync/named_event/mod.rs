@@ -1,12 +1,15 @@
 use std::io;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
-use self::unix::OsEvent;
+#[cfg(target_os = "linux")]
+use self::linux::OsEvent;
 
-#[cfg(unix)]
-mod unix;
+#[cfg(target_os = "linux")]
+mod linux;
 
 /// Event object for notifying other processes.
+#[derive(Clone)]
 pub struct NamedEvent(OsEvent);
 
 impl NamedEvent {
@@ -40,6 +43,14 @@ impl NamedEvent {
 
     pub fn wait_timeout(&self, timeout: Duration) {
         self.0.wait_timeout(timeout)
+    }
+
+    pub fn poll_wait(&self, context: &mut Context) -> Poll<()> {
+        self.0.poll_wait(context)
+    }
+
+    pub async fn wait_async(&self) {
+        self.0.wait_async().await;
     }
 
     pub fn signal(&self) {
