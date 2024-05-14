@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use slotmap::{KeyData, SlotMap};
 
-use crate::{BeatMap, RealTime, Time};
+use crate::{BeatMap, ItemId, RealTime, Time};
 
 slotmap::new_key_type! {
     pub struct TrackId;
@@ -28,12 +28,12 @@ impl Track {
         }
     }
 
-    pub fn insert(&mut self, item: Item, position: Time, duration: Time) -> TrackItemId {
+    pub fn insert(&mut self, item_id: ItemId, position: Time, duration: Time) -> TrackItemId {
         let real_start = position.to_real(&self.beat_map);
         let real_end = real_start + duration.to_real(&self.beat_map);
 
         let item = TrackItem {
-            inner: item,
+            inner: item_id,
             position,
             duration,
             real_start,
@@ -133,7 +133,7 @@ impl Track {
 
 #[derive(Debug, Clone)]
 pub struct TrackItem {
-    inner: Item,
+    inner: ItemId,
     position: Time,
     duration: Time,
     real_start: RealTime,
@@ -141,12 +141,8 @@ pub struct TrackItem {
 }
 
 impl TrackItem {
-    pub fn inner(&self) -> &Item {
-        &self.inner
-    }
-
-    pub fn inner_mut(&mut self) -> &mut Item {
-        &mut self.inner
+    pub fn inner_id(&self) -> ItemId {
+        self.inner
     }
 
     pub fn position(&self) -> Time {
@@ -168,14 +164,4 @@ impl TrackItem {
     pub fn real_duration(&self) -> RealTime {
         self.real_end - self.real_start
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum Item {
-    Audio(AudioItem),
-}
-
-#[derive(Debug, Clone)]
-pub struct AudioItem {
-    // TODO
 }
