@@ -1,0 +1,10 @@
+[package]
+name = "rdaw-object"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = { workspace = true, features = ["small_rng"] }
+rdaw-core.workspace = true
+
+slotmap.workspace = true
