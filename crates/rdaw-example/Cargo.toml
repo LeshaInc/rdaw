@@ -8,5 +8,6 @@ rdaw-core.workspace = true
 rdaw-graph.workspace = true
 rdaw-pipewire.workspace = true
 
+audio_thread_priority.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

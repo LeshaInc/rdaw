@@ -233,7 +233,6 @@ struct Reactor {
 
 impl Reactor {
     #[cold]
-    #[inline(never)]
     fn init() -> Arc<Reactor> {
         let reactor = Arc::new(Reactor {
             master_futex: AtomicU32::new(0),

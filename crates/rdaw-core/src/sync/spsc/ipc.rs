@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crossbeam_utils::CachePadded;
 
-use super::{RawReceiver, RawSender, Receiver, Sender, TryRecvError, TrySendError};
+use super::{Closed, RawReceiver, RawSender, Receiver, Sender, TryRecvError, TrySendError};
 use crate::sync::ring::{IpcConsumer, IpcProducer, IpcRing, PopError, PushError};
 use crate::sync::{IpcSafe, NamedEvent};
 
@@ -121,6 +121,7 @@ impl<T: IpcSafe> RawIpcSender<T> {
         }
     }
 
+    #[cold]
     fn wake_receiver(&mut self) {
         if self.receiver_event.is_none() {
             let ud = self.producer.userdata();
@@ -144,8 +145,8 @@ impl<T: IpcSafe> RawIpcSender<T> {
 }
 
 impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
-    #[inline(never)]
-    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
+    #[cold]
+    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
 
@@ -153,12 +154,12 @@ impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
 
         self.producer.refresh();
 
-        if self.producer.capacity() - self.producer.len() >= count {
-            return true;
+        if self.producer.is_closed() {
+            return Err(Closed);
         }
 
-        if self.producer.is_closed() {
-            return false;
+        if self.producer.capacity() - self.producer.len() >= count {
+            return Ok(());
         }
 
         self.try_wake_receiver();
@@ -170,10 +171,11 @@ impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
             self.sender_event.wait();
         }
 
-        true
+        Ok(())
     }
 
-    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<bool> {
+    #[cold]
+    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
 
@@ -181,16 +183,16 @@ impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
 
         self.producer.refresh();
 
-        if self.producer.capacity() - self.producer.len() >= count {
-            return Poll::Ready(true);
+        if self.producer.is_closed() {
+            return Poll::Ready(Err(Closed));
         }
 
-        if self.producer.is_closed() {
-            return Poll::Ready(false);
+        if self.producer.capacity() - self.producer.len() >= count {
+            return Poll::Ready(Ok(()));
         }
 
         self.try_wake_receiver();
-        self.sender_event.poll_wait(context).map(|_| true)
+        self.sender_event.poll_wait(context).map(|_| Ok(()))
     }
 
     fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
@@ -241,6 +243,7 @@ impl<T: IpcSafe> RawIpcReceiver<T> {
         }
     }
 
+    #[cold]
     fn wake_sender(&mut self) {
         if self.sender_event.is_none() {
             let ud = self.consumer.userdata();
@@ -264,8 +267,8 @@ impl<T: IpcSafe> RawIpcReceiver<T> {
 }
 
 impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
-    #[inline(never)]
-    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
+    #[cold]
+    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
 
@@ -274,11 +277,11 @@ impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
         self.consumer.refresh();
 
         if self.consumer.len() >= count {
-            return true;
+            return Ok(());
         }
 
         if self.consumer.is_closed() {
-            return false;
+            return Err(Closed);
         }
 
         self.try_wake_sender();
@@ -290,11 +293,28 @@ impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
             self.receiver_event.wait();
         }
 
-        true
+        Ok(())
     }
 
-    fn recv_wait_async(&mut self, _count: usize, _context: &Context) -> Poll<bool> {
-        todo!()
+    #[cold]
+    fn recv_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>> {
+        let ud = self.consumer.userdata();
+        ud.receiver_waiting_len.store(count, Release);
+
+        fence(SeqCst);
+
+        self.consumer.refresh();
+
+        if self.consumer.len() >= count {
+            return Poll::Ready(Ok(()));
+        }
+
+        if self.consumer.is_closed() {
+            return Poll::Ready(Err(Closed));
+        }
+
+        self.try_wake_sender();
+        self.receiver_event.poll_wait(context).map(|_| Ok(()))
     }
 
     fn try_recv(&mut self) -> Result<T, TryRecvError> {

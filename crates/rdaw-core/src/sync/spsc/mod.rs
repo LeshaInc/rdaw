@@ -26,9 +26,9 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 pub trait RawSender<T> {
-    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool;
+    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed>;
 
-    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<bool>;
+    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>>;
 
     fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>>;
 
@@ -38,9 +38,9 @@ pub trait RawSender<T> {
 }
 
 pub trait RawReceiver<T> {
-    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool;
+    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed>;
 
-    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool>;
+    fn recv_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>>;
 
     fn try_recv(&mut self) -> Result<T, TryRecvError>;
 
@@ -82,7 +82,8 @@ impl<T, R: RawSender<T>> Sender<T, R> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.raw.send_wait(1, deadline) {
+                        let res = self.raw.send_wait(1, deadline);
+                        if let Err(Closed) = res {
                             return Err(TrySendError::Closed(v));
                         }
                     }
@@ -118,8 +119,8 @@ impl<T, R: RawSender<T>> Sender<T, R> {
 
                     if backoff.is_completed() || cfg!(loom) {
                         match self.raw.send_wait_async(1, ctx) {
-                            Poll::Ready(true) => {}
-                            Poll::Ready(false) => {
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(Closed)) => {
                                 return Poll::Ready(Err(SendError::Closed(v)));
                             }
                             Poll::Pending => return Poll::Pending,
@@ -158,7 +159,8 @@ impl<T, R: RawSender<T>> Sender<T, R> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.raw.send_wait(slice.len(), deadline) {
+                        let res = self.raw.send_wait(slice.len(), deadline);
+                        if let Err(Closed) = res {
                             return Err(TrySendError::Closed(()));
                         }
                     }
@@ -207,8 +209,8 @@ impl<T, R: RawSender<T>> Sender<T, R> {
 
                     if backoff.is_completed() || cfg!(loom) {
                         match self.raw.send_wait_async(slice.len(), ctx) {
-                            Poll::Ready(true) => {}
-                            Poll::Ready(false) => {
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(Closed)) => {
                                 return Poll::Ready(Err(SendError::Closed(())));
                             }
                             Poll::Pending => return Poll::Pending,
@@ -267,7 +269,8 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.raw.recv_wait(1, deadline) {
+                        let res = self.raw.recv_wait(1, deadline);
+                        if let Err(Closed) = res {
                             return Err(TryRecvError::Closed);
                         }
                     }
@@ -300,8 +303,10 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
 
                     if backoff.is_completed() || cfg!(loom) {
                         match self.raw.recv_wait_async(1, ctx) {
-                            Poll::Ready(true) => {}
-                            Poll::Ready(false) => return Poll::Ready(Err(RecvError::Closed)),
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(Closed)) => {
+                                return Poll::Ready(Err(RecvError::Closed));
+                            }
                             Poll::Pending => return Poll::Pending,
                         }
                     }
@@ -342,8 +347,9 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
                     backoff.snooze();
 
                     if backoff.is_completed() || cfg!(loom) {
-                        if !self.raw.recv_wait(slice.len(), deadline) {
-                            return Err(TryRecvError::Empty);
+                        let res = self.raw.recv_wait(slice.len(), deadline);
+                        if let Err(Closed) = res {
+                            return Err(TryRecvError::Closed);
                         }
                     }
                 }
@@ -358,6 +364,37 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
         self.recv_slice_deadline(slice, None).map_err(|e| match e {
             TryRecvError::Empty => unreachable!(),
             TryRecvError::Closed => RecvError::Closed,
+        })
+    }
+
+    pub fn recv_slice_async<'a>(
+        &'a mut self,
+        slice: &'a mut [T],
+    ) -> impl Future<Output = Result<(), RecvError>> + 'a
+    where
+        T: Copy,
+    {
+        let backoff = Backoff::new();
+
+        std::future::poll_fn(move |ctx| loop {
+            match self.raw.try_recv_slice(slice) {
+                Ok(v) => return Poll::Ready(Ok(v)),
+                Err(TryRecvError::Closed) => return Poll::Ready(Err(RecvError::Closed)),
+                Err(TryRecvError::Empty) => {
+                    #[cfg(not(loom))]
+                    backoff.snooze();
+
+                    if backoff.is_completed() || cfg!(loom) {
+                        match self.raw.recv_wait_async(slice.len(), ctx) {
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(Closed)) => {
+                                return Poll::Ready(Err(RecvError::Closed));
+                            }
+                            Poll::Pending => return Poll::Pending,
+                        }
+                    }
+                }
+            }
         })
     }
 }
@@ -380,6 +417,10 @@ pub enum RecvError {
     #[error("closed")]
     Closed,
 }
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
+#[error("closed")]
+pub struct Closed;
 
 #[cfg(test)]
 mod tests {

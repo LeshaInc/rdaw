@@ -10,6 +10,7 @@ rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
 rdaw-graph = { path = "crates/rdaw-graph", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
 
+audio_thread_priority = "0.32.0"
 bumpalo = "3.16.0"
 crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
@@ -18,7 +19,7 @@ loom = "0.7.2"
 nix = { version = "0.28.0", features = ["fs", "mman"] }
 oneshot = "0.1.6"
 pipewire = "0.8.0"
-rand = "0.8.5"
+rand = { version = "0.8.5", features = ["small_rng"] }
 slotmap = "1.0.7"
 smallvec = "1.13.2"
 thiserror = "1.0.59"

@@ -213,9 +213,9 @@ impl PwThread {
                     let len = samples.len().min(buffer_size * num_channels);
                     let samples = &mut samples[..len];
 
-                    let num_samples = samples.len();
-                    let num_frames = num_samples / num_channels;
-                    let stride = num_channels;
+                    let num_frames = samples.len() / num_channels;
+                    let chunk_size = std::mem::size_of_val(samples) as u32;
+                    let chunk_stride = (num_channels * size_of::<f32>()) as i32;
 
                     (callback)(OutCallbackData {
                         samples,
@@ -225,8 +225,8 @@ impl PwThread {
 
                     let chunk = data.chunk_mut();
                     *chunk.offset_mut() = 0;
-                    *chunk.size_mut() = (num_samples * size_of::<f32>()) as u32;
-                    *chunk.stride_mut() = (stride * size_of::<f32>()) as i32;
+                    *chunk.size_mut() = chunk_size;
+                    *chunk.stride_mut() = chunk_stride;
                 }
             })
             .register()?;

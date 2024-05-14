@@ -64,7 +64,7 @@ impl Node for External {
 impl CompiledNode for External {
     fn process(&mut self, _params: &GraphParams, _inputs: Inputs<'_>, outputs: Outputs<'_>) {
         let mut receiver = self.receiver.lock().unwrap();
-        let _ = receiver.recv_slice(&mut outputs.audio[0]);
+        let _ = receiver.recv_slice(outputs.audio[0]);
     }
 }
 
@@ -120,10 +120,10 @@ fn main() {
         }
 
         loop {
-            for i in 0..buffer_size {
+            for val in &mut buf {
                 let x = time / (sample_rate as f32) * 40.0;
                 let y = 2.0 * (x - (0.5 + x).floor());
-                buf[i] = y * 0.5;
+                *val = y * 0.5;
                 time += 1.0;
             }
 

@@ -16,7 +16,7 @@ use loom::sync::atomic::{fence, AtomicUsize};
 #[cfg(loom)]
 use loom::thread::{self, Thread};
 
-use super::{RawReceiver, RawSender, TryRecvError, TrySendError};
+use super::{Closed, RawReceiver, RawSender, TryRecvError, TrySendError};
 use crate::sync::ring::{buffer_with_userdata, Consumer, PopError, Producer, PushError};
 
 pub fn channel<T>(capacity: usize) -> (RawLocalSender<T>, RawLocalReceiver<T>) {
@@ -72,8 +72,8 @@ impl<T> RawLocalSender<T> {
 }
 
 impl<T> RawSender<T> for RawLocalSender<T> {
-    #[inline(never)]
-    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
+    #[cold]
+    fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
         ud.sender_waker
@@ -83,12 +83,12 @@ impl<T> RawSender<T> for RawLocalSender<T> {
 
         self.producer.refresh();
 
-        if self.producer.capacity() - self.producer.len() >= count {
-            return true;
+        if self.producer.is_closed() {
+            return Err(Closed);
         }
 
-        if self.producer.is_closed() {
-            return false;
+        if self.producer.capacity() - self.producer.len() >= count {
+            return Ok(());
         }
 
         self.try_wake_receiver();
@@ -99,11 +99,11 @@ impl<T> RawSender<T> for RawLocalSender<T> {
             thread::park();
         }
 
-        true
+        Ok(())
     }
 
-    #[inline(never)]
-    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<bool> {
+    #[cold]
+    fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>> {
         let ud = self.producer.userdata();
         ud.sender_waiting_len.store(count, Release);
         ud.sender_waker
@@ -113,12 +113,12 @@ impl<T> RawSender<T> for RawLocalSender<T> {
 
         self.producer.refresh();
 
-        if self.producer.capacity() - self.producer.len() >= count {
-            return Poll::Ready(true);
+        if self.producer.is_closed() {
+            return Poll::Ready(Err(Closed));
         }
 
-        if self.producer.is_closed() {
-            return Poll::Ready(false);
+        if self.producer.capacity() - self.producer.len() >= count {
+            return Poll::Ready(Ok(()));
         }
 
         self.try_wake_receiver();
@@ -172,7 +172,7 @@ impl<T> RawLocalReceiver<T> {
         }
     }
 
-    #[inline(never)]
+    #[cold]
     fn wake_sender(&self) {
         let thread = &self.consumer.userdata().sender_waker;
         if let Some(waker) = thread.take() {
@@ -188,8 +188,8 @@ impl<T> RawLocalReceiver<T> {
 }
 
 impl<T> RawReceiver<T> for RawLocalReceiver<T> {
-    #[inline(never)]
-    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> bool {
+    #[cold]
+    fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
         ud.receiver_waker
@@ -200,11 +200,11 @@ impl<T> RawReceiver<T> for RawLocalReceiver<T> {
         self.consumer.refresh();
 
         if self.consumer.len() >= count {
-            return true;
+            return Ok(());
         }
 
         if self.consumer.is_closed() {
-            return false;
+            return Err(Closed);
         }
 
         self.try_wake_sender();
@@ -215,11 +215,11 @@ impl<T> RawReceiver<T> for RawLocalReceiver<T> {
             thread::park();
         }
 
-        true
+        Ok(())
     }
 
-    #[inline(never)]
-    fn recv_wait_async(&mut self, count: usize, context: &Context) -> Poll<bool> {
+    #[cold]
+    fn recv_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>> {
         let ud = self.consumer.userdata();
         ud.receiver_waiting_len.store(count, Release);
         ud.receiver_waker
@@ -230,11 +230,11 @@ impl<T> RawReceiver<T> for RawLocalReceiver<T> {
         self.consumer.refresh();
 
         if self.consumer.len() >= count {
-            return Poll::Ready(true);
+            return Poll::Ready(Ok(()));
         }
 
         if self.consumer.is_closed() {
-            return Poll::Ready(false);
+            return Poll::Ready(Err(Closed));
         }
 
         self.try_wake_sender();
