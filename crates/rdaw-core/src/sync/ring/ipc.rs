@@ -21,7 +21,7 @@ pub type IpcProducer<T, U = ()> = Producer<T, U, IpcBuffer<T, U>>;
 pub type IpcConsumer<T, U = ()> = Consumer<T, U, IpcBuffer<T, U>>;
 
 pub struct IpcRing<T, U> {
-    buffer: Option<IpcBuffer<T, U>>,
+    buffer: IpcBuffer<T, U>,
 }
 
 impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
@@ -30,9 +30,7 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
     /// The rest of the ID will be randomly generated.
     pub fn create(prefix: &str, capacity: usize, userdata: U) -> io::Result<Self> {
         let buffer = IpcBuffer::create(prefix, capacity, userdata)?;
-        Ok(Self {
-            buffer: Some(buffer),
-        })
+        Ok(Self { buffer })
     }
 
     /// Opens an ring buffer by ID.
@@ -42,26 +40,23 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
     /// ID must be obtained by [`IpcRing::id`]
     pub unsafe fn open(id: &str) -> io::Result<Self> {
         let buffer = IpcBuffer::open(id)?;
-        Ok(Self {
-            buffer: Some(buffer),
-        })
+        Ok(Self { buffer })
     }
 
     pub fn id(&self) -> &str {
-        self.buffer.as_ref().unwrap().id()
+        self.buffer.id()
     }
 
     pub fn prefix(&self) -> &str {
-        self.buffer.as_ref().unwrap().prefix()
+        self.buffer.prefix()
     }
 
     pub fn producer_created(&self) -> bool {
-        let buffer = self.buffer.as_ref().unwrap();
-        buffer.header().producer_created.load(Acquire)
+        self.buffer.header().producer_created.load(Acquire)
     }
 
-    pub fn producer(mut self) -> IpcProducer<T, U> {
-        let buffer = self.buffer.take().unwrap();
+    pub fn producer(self) -> IpcProducer<T, U> {
+        let buffer = self.buffer;
 
         if buffer.header().producer_created.swap(true, AcqRel) {
             panic!("producer already created");
@@ -73,12 +68,11 @@ impl<T: IpcSafe, U: IpcSafe> IpcRing<T, U> {
     }
 
     pub fn consumer_created(&self) -> bool {
-        let buffer = self.buffer.as_ref().unwrap();
-        buffer.header().consumer_created.load(Acquire)
+        self.buffer.header().consumer_created.load(Acquire)
     }
 
-    pub fn consumer(mut self) -> IpcConsumer<T, U> {
-        let buffer = self.buffer.take().unwrap();
+    pub fn consumer(self) -> IpcConsumer<T, U> {
+        let buffer = self.buffer;
 
         if buffer.header().consumer_created.swap(true, AcqRel) {
             panic!("consumer already created");

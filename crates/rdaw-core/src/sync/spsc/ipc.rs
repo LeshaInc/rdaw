@@ -124,17 +124,28 @@ impl<T: IpcSafe> RawIpcSender<T> {
     #[cold]
     fn wake_receiver(&mut self) {
         if self.receiver_event.is_none() {
-            let ud = self.producer.userdata();
-            let (id_len, id_arr) = unsafe { &*ud.receiver_event_id.get() };
-            if *id_len == 0 {
-                return;
-            }
-            let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
-            let event = unsafe { NamedEvent::open(id) }.unwrap();
-            self.receiver_event = Some(event);
+            self.open_receiver_event();
         }
 
-        self.receiver_event.as_ref().unwrap().signal();
+        if let Some(event) = &self.receiver_event {
+            event.signal();
+        }
+    }
+
+    #[cold]
+    fn open_receiver_event(&mut self) {
+        let ud = self.producer.userdata();
+
+        let (id_len, id_arr) = unsafe { &*ud.receiver_event_id.get() };
+        if *id_len == 0 {
+            return;
+        }
+
+        let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
+
+        if let Ok(event) = unsafe { NamedEvent::open(id) } {
+            self.receiver_event = Some(event);
+        }
     }
 
     fn send_success(&mut self) {
@@ -246,17 +257,28 @@ impl<T: IpcSafe> RawIpcReceiver<T> {
     #[cold]
     fn wake_sender(&mut self) {
         if self.sender_event.is_none() {
-            let ud = self.consumer.userdata();
-            let (id_len, id_arr) = unsafe { &*ud.sender_event_id.get() };
-            if *id_len == 0 {
-                return;
-            }
-            let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
-            let event = unsafe { NamedEvent::open(id) }.unwrap();
-            self.sender_event = Some(event);
+            self.open_sender_event();
         }
 
-        self.sender_event.as_ref().unwrap().signal();
+        if let Some(event) = &self.sender_event {
+            event.signal();
+        }
+    }
+
+    #[cold]
+    fn open_sender_event(&mut self) {
+        let ud = self.consumer.userdata();
+
+        let (id_len, id_arr) = unsafe { &*ud.sender_event_id.get() };
+        if *id_len == 0 {
+            return;
+        }
+
+        let id = std::str::from_utf8(&id_arr[..*id_len]).unwrap();
+
+        if let Ok(event) = unsafe { NamedEvent::open(id) } {
+            self.sender_event = Some(event);
+        }
     }
 
     fn recv_success(&mut self) {
