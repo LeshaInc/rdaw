@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 rdaw-core.workspace = true
 
+rstar.workspace = true
 slotmap.workspace = true
 
 [dev-dependencies]

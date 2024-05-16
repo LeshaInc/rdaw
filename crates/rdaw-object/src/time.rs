@@ -42,6 +42,10 @@ impl RealTime {
         RealTime::from_nanos((secs * 1e9) as i64)
     }
 
+    pub fn as_nanos(self) -> i64 {
+        self.nanos
+    }
+
     pub fn as_secs_f64(self) -> f64 {
         self.nanos as f64 / 1e9
     }
