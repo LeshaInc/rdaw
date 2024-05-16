@@ -1,7 +1,7 @@
 mod error;
 mod internal;
 
-use rdaw_core::driver::{self, OutStreamDesc};
+use rdaw_audio::driver::{self, OutStreamDesc};
 
 pub use crate::error::{Error, Result};
 use crate::internal::{Handle, OutStreamId, PwThread};

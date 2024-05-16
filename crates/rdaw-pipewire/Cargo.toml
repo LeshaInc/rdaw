@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rdaw-core.workspace = true
+rdaw-audio.workspace = true
 
 oneshot.workspace = true
 pipewire.workspace = true

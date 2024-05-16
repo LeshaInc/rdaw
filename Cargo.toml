@@ -6,8 +6,9 @@ members = [
 ]
 
 [workspace.dependencies]
+rdaw-audio = { path = "crates/rdaw-audio", version = "0.1.0" }
 rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
-rdaw-graph = { path = "crates/rdaw-graph", version = "0.1.0" }
+rdaw-object= { path = "crates/rdaw-object", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
 
 audio_thread_priority = "0.32.0"

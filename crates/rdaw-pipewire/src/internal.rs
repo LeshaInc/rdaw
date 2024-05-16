@@ -18,7 +18,7 @@ use pipewire::spa::utils::dict::DictRef;
 use pipewire::spa::utils::Direction;
 use pipewire::stream::{Stream, StreamFlags, StreamListener};
 use pipewire::types::ObjectType;
-use rdaw_core::driver::{Channel, OutCallbackData, OutStreamDesc};
+use rdaw_audio::driver::{Channel, OutCallbackData, OutStreamDesc};
 use slotmap::SlotMap;
 
 use crate::{Error, Result};

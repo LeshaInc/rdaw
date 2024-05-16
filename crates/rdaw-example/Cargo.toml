@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 rdaw-core.workspace = true
-rdaw-graph.workspace = true
+rdaw-audio.workspace = true
 rdaw-pipewire.workspace = true
 
 audio_thread_priority.workspace = true

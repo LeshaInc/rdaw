@@ -1,11 +1,9 @@
 [package]
-name = "rdaw-graph"
+name = "rdaw-audio"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rdaw-core.workspace = true
-
 bumpalo.workspace = true
 slotmap.workspace = true
 smallvec.workspace = true

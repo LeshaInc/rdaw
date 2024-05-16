@@ -1,10 +1,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rdaw_core::driver::{Channel, Driver as _, OutStreamDesc};
-use rdaw_core::graph::{CompiledNode, Graph, GraphParams, Inputs, Node, Outputs, Port};
+use rdaw_audio::driver::{Channel, Driver as _, OutStreamDesc};
+use rdaw_audio::graph::{CompiledNode, Graph, GraphParams, Inputs, Node, Outputs, Port};
 use rdaw_core::sync::spsc::{self, IpcChannel, IpcReceiver, Sender};
-use rdaw_graph::GraphImpl;
 use rdaw_pipewire::Driver;
 
 #[derive(Clone, Copy)]
@@ -138,7 +137,7 @@ fn main() {
     let (left_sender, mut left_receiver) = spsc::channel(ring_size);
     let (right_sender, mut right_receiver) = spsc::channel(ring_size);
 
-    let mut graph = GraphImpl::new(GraphParams {
+    let mut graph = Graph::new(GraphParams {
         sample_rate,
         buffer_size,
     });

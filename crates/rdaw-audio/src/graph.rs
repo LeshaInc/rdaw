@@ -2,61 +2,80 @@ use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use bumpalo::Bump;
-use rdaw_core::buffer::AudioBuffer;
-use rdaw_core::graph::{
-    CompiledGraph, CompiledNode, Graph, GraphParams, Inputs, Node, NodeId, Outputs, Port,
-};
-use slotmap::{KeyData, SlotMap};
+use slotmap::SlotMap;
 use smallvec::SmallVec;
 
+use crate::buffer::AudioBuffer;
+
+#[derive(Debug, Clone, Copy)]
+pub struct GraphParams {
+    pub sample_rate: u32,
+    pub buffer_size: usize,
+}
+
 slotmap::new_key_type! {
-    struct NodeKey;
+    pub struct NodeId;
 }
 
-impl From<NodeId> for NodeKey {
-    fn from(value: NodeId) -> Self {
-        NodeKey(KeyData::from_ffi(value.0))
-    }
+pub trait Node: Send + Sync + 'static {
+    fn num_audio_inputs(&self) -> usize;
+
+    fn num_audio_outputs(&self) -> usize;
+
+    fn compile(&self, params: &GraphParams) -> Box<dyn CompiledNode>;
 }
 
-impl From<NodeKey> for NodeId {
-    fn from(value: NodeKey) -> Self {
-        NodeId(value.0.as_ffi())
-    }
+pub trait CompiledNode: Send + 'static {
+    fn process(&mut self, params: &GraphParams, inputs: Inputs<'_>, outputs: Outputs<'_>);
+}
+
+#[derive(Debug)]
+pub struct Inputs<'a> {
+    pub audio: &'a [&'a AudioBuffer],
+}
+
+#[derive(Debug)]
+pub struct Outputs<'a> {
+    pub audio: &'a mut [&'a mut AudioBuffer],
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Port {
+    Audio(usize),
 }
 
 struct NodeEntry {
     node: Box<dyn Node>,
-    deps: HashSet<NodeKey>,
-    rev_deps: HashSet<NodeKey>,
-    audio_inputs: Vec<Option<(NodeKey, usize)>>,
-    audio_outputs: Vec<Vec<(NodeKey, usize)>>,
+    deps: HashSet<NodeId>,
+    rev_deps: HashSet<NodeId>,
+    audio_inputs: Vec<Option<(NodeId, usize)>>,
+    audio_outputs: Vec<Vec<(NodeId, usize)>>,
 }
 
-pub struct GraphImpl {
+pub struct Graph {
     params: GraphParams,
-    nodes: SlotMap<NodeKey, NodeEntry>,
+    nodes: SlotMap<NodeId, NodeEntry>,
 }
 
-impl GraphImpl {
-    pub fn new(params: GraphParams) -> GraphImpl {
-        GraphImpl {
+impl Graph {
+    pub fn new(params: GraphParams) -> Graph {
+        Graph {
             params,
             nodes: SlotMap::default(),
         }
     }
 
-    fn toposort(&self) -> Vec<NodeKey> {
+    fn toposort(&self) -> Vec<NodeId> {
         let mut indegrees = self
             .nodes
             .iter()
-            .map(|(key, entry)| (key, entry.deps.len()))
-            .collect::<HashMap<NodeKey, usize>>();
+            .map(|(id, entry)| (id, entry.deps.len()))
+            .collect::<HashMap<NodeId, usize>>();
 
         let mut queue = indegrees
             .iter()
             .filter(|&(_, &indegree)| indegree == 0)
-            .map(|(&key, _)| key)
+            .map(|(&id, _)| id)
             .collect::<VecDeque<_>>();
 
         let mut order = Vec::new();
@@ -78,42 +97,35 @@ impl GraphImpl {
 
         order
     }
-}
 
-impl Graph for GraphImpl {
-    fn set_params(&mut self, params: GraphParams) {
+    pub fn set_params(&mut self, params: GraphParams) {
         self.params = params;
     }
 
-    fn add_node<N: Node>(&mut self, node: N) -> NodeId {
-        let key = self.nodes.insert(NodeEntry {
+    pub fn add_node<N: Node>(&mut self, node: N) -> NodeId {
+        self.nodes.insert(NodeEntry {
             deps: HashSet::new(),
             rev_deps: HashSet::new(),
             audio_inputs: vec![None; node.num_audio_inputs()],
             audio_outputs: vec![vec![]; node.num_audio_outputs()],
 
             node: Box::new(node),
-        });
-
-        NodeId(key.0.as_ffi())
+        })
     }
 
-    fn get_node(&self, id: NodeId) -> Option<&dyn Node> {
+    pub fn get_node(&self, id: NodeId) -> Option<&dyn Node> {
         self.nodes.get(id.into()).map(|v| &*v.node)
     }
 
-    fn remove_node(&mut self, id: NodeId) {
+    pub fn remove_node(&mut self, id: NodeId) {
         self.nodes.remove(id.into());
     }
 
-    fn connect(
+    pub fn connect(
         &mut self,
         (src_node, src_port): (NodeId, Port),
         (dst_node, dst_port): (NodeId, Port),
     ) {
-        let src_node = NodeKey::from(src_node);
-        let dst_node = NodeKey::from(dst_node);
-
         match (src_port, dst_port) {
             (Port::Audio(src_port), Port::Audio(dst_port)) => {
                 self.nodes[src_node].audio_outputs[src_port].push((dst_node, dst_port));
@@ -125,13 +137,13 @@ impl Graph for GraphImpl {
         self.nodes[src_node].rev_deps.insert(dst_node);
     }
 
-    fn compile(&self) -> Box<dyn CompiledGraph> {
+    pub fn compile(&self) -> CompiledGraph {
         let mut num_buffers = 1;
         let mut out_buffers = HashMap::with_capacity(self.nodes.len());
         let mut nodes = Vec::with_capacity(self.nodes.len());
 
-        for node_key in self.toposort() {
-            let node = &self.nodes[node_key];
+        for node_id in self.toposort() {
+            let node = &self.nodes[node_id];
 
             let audio_inputs = node
                 .audio_inputs
@@ -147,7 +159,7 @@ impl Graph for GraphImpl {
                 let buffer_idx = num_buffers;
                 num_buffers += 1;
 
-                out_buffers.insert((node_key, idx), buffer_idx);
+                out_buffers.insert((node_id, idx), buffer_idx);
                 audio_outputs.push(buffer_idx);
             }
 
@@ -165,14 +177,14 @@ impl Graph for GraphImpl {
             .map(|_| UnsafeCell::new(AudioBuffer::new(self.params.buffer_size)))
             .collect();
 
-        Box::new(CompiledGraphImpl {
+        CompiledGraph {
             state: State {
                 params: self.params,
                 bump,
                 audio_buffers,
             },
             nodes,
-        })
+        }
     }
 }
 
@@ -182,13 +194,13 @@ struct State {
     audio_buffers: Vec<UnsafeCell<AudioBuffer>>,
 }
 
-pub struct CompiledGraphImpl {
+pub struct CompiledGraph {
     state: State,
     nodes: Vec<CompiledNodeEntry>,
 }
 
-impl CompiledGraph for CompiledGraphImpl {
-    fn process(&mut self) {
+impl CompiledGraph {
+    pub fn process(&mut self) {
         self.state.bump.reset();
 
         for node in &mut self.nodes {
