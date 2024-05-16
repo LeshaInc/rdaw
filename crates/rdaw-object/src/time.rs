@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub};
+use rdaw_core::time::RealTime;
 
 use crate::BeatMap;
 
@@ -18,77 +18,8 @@ impl Time {
 
     pub fn to_beat(self, beat_map: &BeatMap) -> BeatTime {
         match self {
-            Time::Real(t) => t.to_beat(beat_map),
+            Time::Real(t) => BeatTime::from_real(t, beat_map),
             Time::Beat(t) => t,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RealTime {
-    nanos: i64,
-}
-
-impl RealTime {
-    pub const ZERO: RealTime = RealTime::from_nanos(0);
-    pub const MIN: RealTime = RealTime::from_nanos(i64::MIN);
-    pub const MAX: RealTime = RealTime::from_nanos(i64::MAX);
-
-    pub const fn from_nanos(nanos: i64) -> RealTime {
-        RealTime { nanos }
-    }
-
-    pub fn from_secs_f64(secs: f64) -> RealTime {
-        RealTime::from_nanos((secs * 1e9) as i64)
-    }
-
-    pub fn as_nanos(self) -> i64 {
-        self.nanos
-    }
-
-    pub fn as_secs_f64(self) -> f64 {
-        self.nanos as f64 / 1e9
-    }
-
-    pub fn to_beat(self, beat_map: &BeatMap) -> BeatTime {
-        let frac_beats = self.as_secs_f64() / 60.0 * f64::from(beat_map.beats_per_minute);
-        let subbeat = ((frac_beats - frac_beats.floor()) * (f64::from(u32::MAX) + 1.0)) as u32;
-        let whole_beats = frac_beats.floor() as i64;
-        let beat = whole_beats.rem_euclid(i64::from(beat_map.beats_per_bar)) as u32;
-        let bar = whole_beats.div_euclid(i64::from(beat_map.beats_per_bar)) as i32;
-        BeatTime { bar, beat, subbeat }
-    }
-
-    pub fn approx_eq(self, other: RealTime) -> bool {
-        self.approx_eq_eps(other, 100)
-    }
-
-    pub fn approx_eq_eps(self, other: RealTime, eps_ns: i64) -> bool {
-        let diff = if self.nanos > other.nanos {
-            self.nanos - other.nanos
-        } else {
-            other.nanos - self.nanos
-        };
-        diff <= eps_ns
-    }
-}
-
-impl Add<RealTime> for RealTime {
-    type Output = RealTime;
-
-    fn add(self, rhs: RealTime) -> RealTime {
-        RealTime {
-            nanos: self.nanos + rhs.nanos,
-        }
-    }
-}
-
-impl Sub<RealTime> for RealTime {
-    type Output = RealTime;
-
-    fn sub(self, rhs: RealTime) -> RealTime {
-        RealTime {
-            nanos: self.nanos - rhs.nanos,
         }
     }
 }
@@ -109,6 +40,15 @@ impl BeatTime {
         BeatTime { bar, beat, subbeat }
     }
 
+    pub fn from_real(real: RealTime, beat_map: &BeatMap) -> BeatTime {
+        let frac_beats = real.as_secs_f64() / 60.0 * f64::from(beat_map.beats_per_minute);
+        let subbeat = ((frac_beats - frac_beats.floor()) * (f64::from(u32::MAX) + 1.0)) as u32;
+        let whole_beats = frac_beats.floor() as i64;
+        let beat = whole_beats.rem_euclid(i64::from(beat_map.beats_per_bar)) as u32;
+        let bar = whole_beats.div_euclid(i64::from(beat_map.beats_per_bar)) as i32;
+        BeatTime { bar, beat, subbeat }
+    }
+
     pub fn to_real(self, beat_map: &BeatMap) -> RealTime {
         let whole_beats =
             f64::from(self.bar) * f64::from(beat_map.beats_per_bar) + f64::from(self.beat);
@@ -125,6 +65,8 @@ mod tests {
 
     use super::*;
 
+    const EPS: RealTime = RealTime::from_nanos(100);
+
     #[test]
     fn test_conversion() {
         let beat_map = BeatMap {
@@ -138,12 +80,12 @@ mod tests {
         );
 
         assert_eq!(
-            RealTime::from_secs_f64(0.0).to_beat(&beat_map),
+            BeatTime::from_real(RealTime::from_secs_f64(0.0), &beat_map),
             BeatTime::new(0, 0, 0),
         );
 
         assert_eq!(
-            RealTime::from_secs_f64(60.0).to_beat(&beat_map),
+            BeatTime::from_real(RealTime::from_secs_f64(60.0), &beat_map),
             BeatTime::new(30, 0, 0),
         );
 
@@ -153,13 +95,13 @@ mod tests {
         );
 
         assert_eq!(
-            RealTime::from_secs_f64(61.25).to_beat(&beat_map),
+            BeatTime::from_real(RealTime::from_secs_f64(61.25), &beat_map),
             BeatTime::new(30, 2, u32::MAX / 2),
         );
 
         assert!(BeatTime::new(30, 2, u32::MAX / 2)
             .to_real(&beat_map)
-            .approx_eq(RealTime::from_secs_f64(61.25)));
+            .approx_eq(RealTime::from_secs_f64(61.25), EPS));
     }
 
     #[test]
@@ -174,8 +116,8 @@ mod tests {
 
             for _ in 0..1000 {
                 let real = RealTime::from_secs_f64(rng.gen_range(0.0..0.5));
-                let beat = real.to_beat(&beat_map);
-                assert!(beat.to_real(&beat_map).approx_eq(real));
+                let beat = BeatTime::from_real(real, &beat_map);
+                assert!(beat.to_real(&beat_map).approx_eq(real, EPS));
             }
         }
     }
