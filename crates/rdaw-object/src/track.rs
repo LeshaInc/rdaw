@@ -80,19 +80,24 @@ impl Track {
             .map(|item| (item.id, &self.items[item.id]))
     }
 
-    pub fn move_item(&mut self, id: TrackItemId, new_pos: Time) {
+    fn update_item_envelope(
+        &mut self,
+        id: TrackItemId,
+        mut func: impl FnMut(&mut TrackItem, &BeatMap),
+    ) {
         let item = &mut self.items[id];
 
-        let duration = item.real_duration();
         let old_start = item.real_start;
         let old_end = item.real_end;
 
-        item.position = new_pos;
-        item.real_start = new_pos.to_real(&self.beat_map);
-        item.real_end = item.real_start + duration;
+        func(item, &self.beat_map);
 
         let new_start = item.real_start;
         let new_end = item.real_end;
+
+        if old_start == new_start && old_end == new_end {
+            return;
+        }
 
         self.items_tree
             .remove(&TreeItem::new(id, old_start, old_end));
@@ -100,8 +105,20 @@ impl Track {
             .insert(TreeItem::new(id, new_start, new_end));
     }
 
+    pub fn move_item(&mut self, id: TrackItemId, new_pos: Time) {
+        self.update_item_envelope(id, |item, beat_map| {
+            let duration = item.real_duration();
+            item.position = new_pos;
+            item.real_start = new_pos.to_real(beat_map);
+            item.real_end = item.real_start + duration;
+        });
+    }
+
     pub fn resize_item(&mut self, id: TrackItemId, new_duration: Time) {
-        self.items[id].duration = new_duration;
+        self.update_item_envelope(id, |item, beat_map| {
+            item.duration = new_duration;
+            item.real_end = item.real_start + new_duration.to_real(beat_map);
+        });
     }
 }
 
