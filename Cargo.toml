@@ -13,6 +13,7 @@ rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
 rdaw-object = { path = "crates/rdaw-object", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
 
+ahash = "0.8.11"
 audio_thread_priority = "0.32.0"
 blake3 = "1.5.1"
 bumpalo = "3.16.0"

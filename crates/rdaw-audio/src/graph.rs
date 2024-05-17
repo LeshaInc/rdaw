@@ -1,7 +1,8 @@
 use std::cell::UnsafeCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 
 use bumpalo::Bump;
+use rdaw_core::collections::{HashMap, HashSet};
 use slotmap::SlotMap;
 use smallvec::SmallVec;
 
@@ -104,8 +105,8 @@ impl Graph {
 
     pub fn add_node<N: Node>(&mut self, node: N) -> NodeId {
         self.nodes.insert(NodeEntry {
-            deps: HashSet::new(),
-            rev_deps: HashSet::new(),
+            deps: HashSet::default(),
+            rev_deps: HashSet::default(),
             audio_inputs: vec![None; node.num_audio_inputs()],
             audio_outputs: vec![vec![]; node.num_audio_outputs()],
 
@@ -139,7 +140,8 @@ impl Graph {
 
     pub fn compile(&self) -> CompiledGraph {
         let mut num_buffers = 1;
-        let mut out_buffers = HashMap::with_capacity(self.nodes.len());
+        let mut out_buffers =
+            HashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
         let mut nodes = Vec::with_capacity(self.nodes.len());
 
         for node_id in self.toposort() {

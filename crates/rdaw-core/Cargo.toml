@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ahash.workspace = true
 crossbeam-queue.workspace = true
 crossbeam-utils.workspace = true
 futures-lite.workspace = true

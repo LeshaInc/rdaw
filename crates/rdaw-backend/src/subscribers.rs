@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use std::hash::Hash;
 
 use futures_lite::Stream;
+use rdaw_core::collections::HashMap;
 use rdaw_core::sync::spsc::{self, Sender};
 
 const CAPACITY: usize = 8;
@@ -14,7 +14,7 @@ pub struct Subscribers<K, E> {
 impl<K, E> Subscribers<K, E> {
     pub fn new() -> Subscribers<K, E> {
         Subscribers {
-            map: HashMap::new(),
+            map: HashMap::default(),
         }
     }
 }
