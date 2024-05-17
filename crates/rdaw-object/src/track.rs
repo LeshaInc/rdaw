@@ -2,7 +2,7 @@ use rdaw_core::time::RealTime;
 use rstar::{RTree, RTreeObject, AABB};
 use slotmap::SlotMap;
 
-use crate::{BeatMap, ItemId, Time};
+use crate::{BeatMap, Hub, ItemId, Object, Time, Uuid};
 
 slotmap::new_key_type! {
     pub struct TrackId;
@@ -12,6 +12,7 @@ slotmap::new_key_type! {
 
 #[derive(Debug, Clone)]
 pub struct Track {
+    uuid: Uuid,
     beat_map: BeatMap,
     items: SlotMap<TrackItemId, TrackItem>,
     items_tree: RTree<TreeItem>,
@@ -20,6 +21,7 @@ pub struct Track {
 impl Track {
     pub fn new(beat_map: BeatMap) -> Track {
         Track {
+            uuid: Uuid::new_v4(),
             beat_map,
             items: SlotMap::default(),
             items_tree: RTree::new(),
@@ -119,6 +121,26 @@ impl Track {
             item.duration = new_duration;
             item.real_end = item.real_start + new_duration.to_real(beat_map);
         });
+    }
+}
+
+impl Object for Track {
+    type Id = TrackId;
+
+    fn uuid(&self) -> Uuid {
+        self.uuid
+    }
+
+    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
+        for item in self.items.values() {
+            match item.inner_id() {
+                ItemId::Audio(id) => {
+                    let item = &hub.audio_items[id];
+                    callback(item.uuid());
+                    item.trace(hub, callback);
+                }
+            }
+        }
     }
 }
 

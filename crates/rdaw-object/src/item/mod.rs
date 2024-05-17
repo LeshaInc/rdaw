@@ -12,14 +12,3 @@ impl From<AudioItemId> for ItemId {
         ItemId::Audio(id)
     }
 }
-
-#[derive(Debug, Clone)]
-pub enum Item {
-    Audio(AudioItem),
-}
-
-impl From<AudioItem> for Item {
-    fn from(item: AudioItem) -> Item {
-        Item::Audio(item)
-    }
-}

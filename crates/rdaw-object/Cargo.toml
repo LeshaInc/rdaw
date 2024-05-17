@@ -6,8 +6,10 @@ edition = "2021"
 [dependencies]
 rdaw-core.workspace = true
 
+blake3.workspace = true
 rstar.workspace = true
 slotmap.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
