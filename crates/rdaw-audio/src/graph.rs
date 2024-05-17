@@ -114,11 +114,11 @@ impl Graph {
     }
 
     pub fn get_node(&self, id: NodeId) -> Option<&dyn Node> {
-        self.nodes.get(id.into()).map(|v| &*v.node)
+        self.nodes.get(id).map(|v| &*v.node)
     }
 
     pub fn remove_node(&mut self, id: NodeId) {
-        self.nodes.remove(id.into());
+        self.nodes.remove(id);
     }
 
     pub fn connect(

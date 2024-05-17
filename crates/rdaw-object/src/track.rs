@@ -161,7 +161,7 @@ impl RTreeObject for TreeItem {
     type Envelope = AABB<(i64, i64)>;
 
     fn envelope(&self) -> Self::Envelope {
-        AABB::from_corners((self.start.as_nanos(), 0), (self.end.as_nanos() as i64, 0))
+        AABB::from_corners((self.start.as_nanos(), 0), (self.end.as_nanos(), 0))
     }
 }
 

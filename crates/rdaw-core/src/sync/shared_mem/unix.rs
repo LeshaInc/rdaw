@@ -91,7 +91,7 @@ impl OsShm {
         };
 
         let (prefix, _) = id.rsplit_once('.').unwrap();
-        let prefix = prefix.strip_prefix("/").unwrap();
+        let prefix = prefix.strip_prefix('/').unwrap();
 
         Ok(OsShm {
             id: id.into(),
