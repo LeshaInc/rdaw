@@ -2,7 +2,7 @@ mod subscribers;
 
 use futures_lite::Stream;
 use rdaw_api::{Error, Result, TrackEvent, TrackOperations};
-use rdaw_object::{BeatMap, Hub, Track, TrackId};
+use rdaw_object::{BeatMap, Hub, ItemId, Time, Track, TrackId, TrackItem, TrackItemId};
 
 use self::subscribers::Subscribers;
 
@@ -48,11 +48,99 @@ impl TrackOperations for Backend {
         Ok(track.name.clone())
     }
 
-    async fn set_track_name(&mut self, id: TrackId, name: String) -> Result<()> {
+    async fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
-        track.name.clone_from(&name);
+        track.name.clone_from(&new_name);
 
-        let event = TrackEvent::NameChanged(name);
+        let event = TrackEvent::NameChanged { new_name };
+        self.track_subscribers.notify(id, event).await;
+
+        Ok(())
+    }
+
+    async fn get_track_range(
+        &self,
+        id: TrackId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Result<Vec<TrackItemId>> {
+        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+        let items = track.range(start, end).map(|(id, _)| id).collect();
+        Ok(items)
+    }
+
+    async fn add_track_item(
+        &mut self,
+        id: TrackId,
+        item_id: ItemId,
+        position: Time,
+        duration: Time,
+    ) -> Result<TrackItemId> {
+        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        let item_id = track.insert(item_id, position, duration);
+
+        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let event = TrackEvent::ItemAdded {
+            id: item_id,
+            start: item.real_start(),
+            end: item.real_end(),
+        };
+        self.track_subscribers.notify(id, event).await;
+
+        Ok(item_id)
+    }
+
+    async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
+        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        Ok(item.clone())
+    }
+
+    async fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
+        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        track.remove(item_id);
+
+        let event = TrackEvent::ItemRemoved { id: item_id };
+        self.track_subscribers.notify(id, event).await;
+
+        Ok(())
+    }
+
+    async fn move_track_item(
+        &mut self,
+        id: TrackId,
+        item_id: TrackItemId,
+        new_position: Time,
+    ) -> Result<()> {
+        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        track.move_item(item_id, new_position);
+
+        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let event = TrackEvent::ItemMoved {
+            id: item_id,
+            new_start: item.real_start(),
+        };
+        self.track_subscribers.notify(id, event).await;
+
+        Ok(())
+    }
+
+    async fn resize_track_item(
+        &mut self,
+        id: TrackId,
+        item_id: TrackItemId,
+        new_duration: Time,
+    ) -> Result<()> {
+        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        track.move_item(item_id, new_duration);
+
+        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let new_duration = item.real_duration();
+
+        let event = TrackEvent::ItemResized {
+            id: item_id,
+            new_duration,
+        };
         self.track_subscribers.notify(id, event).await;
 
         Ok(())

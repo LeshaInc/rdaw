@@ -1,5 +1,6 @@
 use futures_lite::Stream;
-use rdaw_object::TrackId;
+use rdaw_core::time::RealTime;
+use rdaw_object::{ItemId, Time, TrackId, TrackItem, TrackItemId};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -18,9 +19,60 @@ pub trait TrackOperations {
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 
     async fn set_track_name(&mut self, id: TrackId, name: String) -> Result<()>;
+
+    async fn get_track_range(
+        &self,
+        id: TrackId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Result<Vec<TrackItemId>>;
+
+    async fn add_track_item(
+        &mut self,
+        id: TrackId,
+        item_id: ItemId,
+        position: Time,
+        duration: Time,
+    ) -> Result<TrackItemId>;
+
+    async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem>;
+
+    async fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()>;
+
+    async fn move_track_item(
+        &mut self,
+        id: TrackId,
+        item_id: TrackItemId,
+        new_position: Time,
+    ) -> Result<()>;
+
+    async fn resize_track_item(
+        &mut self,
+        id: TrackId,
+        item_id: TrackItemId,
+        new_duration: Time,
+    ) -> Result<()>;
 }
 
 #[derive(Debug, Clone)]
 pub enum TrackEvent {
-    NameChanged(String),
+    NameChanged {
+        new_name: String,
+    },
+    ItemAdded {
+        id: TrackItemId,
+        start: RealTime,
+        end: RealTime,
+    },
+    ItemRemoved {
+        id: TrackItemId,
+    },
+    ItemMoved {
+        id: TrackItemId,
+        new_start: RealTime,
+    },
+    ItemResized {
+        id: TrackItemId,
+        new_duration: RealTime,
+    },
 }
