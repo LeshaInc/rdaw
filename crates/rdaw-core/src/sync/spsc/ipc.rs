@@ -156,6 +156,10 @@ impl<T: IpcSafe> RawIpcSender<T> {
 }
 
 impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
+    fn is_closed(&self) -> bool {
+        self.producer.is_closed()
+    }
+
     #[cold]
     fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.producer.userdata();
@@ -232,6 +236,8 @@ impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
     }
 }
 
+impl<T: IpcSafe> Unpin for RawIpcSender<T> {}
+
 impl<T: IpcSafe> Drop for RawIpcSender<T> {
     fn drop(&mut self) {
         self.producer.close();
@@ -289,6 +295,10 @@ impl<T: IpcSafe> RawIpcReceiver<T> {
 }
 
 impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
+    fn is_closed(&self) -> bool {
+        self.consumer.is_closed()
+    }
+
     #[cold]
     fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.consumer.userdata();
@@ -364,6 +374,8 @@ impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
         Ok(())
     }
 }
+
+impl<T: IpcSafe> Unpin for RawIpcReceiver<T> {}
 
 impl<T: IpcSafe> Drop for RawIpcReceiver<T> {
     fn drop(&mut self) {

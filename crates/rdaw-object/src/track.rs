@@ -12,6 +12,7 @@ slotmap::new_key_type! {
 
 #[derive(Debug, Clone)]
 pub struct Track {
+    pub name: String,
     uuid: Uuid,
     beat_map: BeatMap,
     items: SlotMap<TrackItemId, TrackItem>,
@@ -19,8 +20,9 @@ pub struct Track {
 }
 
 impl Track {
-    pub fn new(beat_map: BeatMap) -> Track {
+    pub fn new(beat_map: BeatMap, name: String) -> Track {
         Track {
+            name,
             uuid: Uuid::new_v4(),
             beat_map,
             items: SlotMap::default(),
@@ -222,7 +224,7 @@ mod tests {
             beats_per_bar: 4,
         };
 
-        let mut track = Track::new(beat_map);
+        let mut track = Track::new(beat_map, "Unnamed".into());
 
         let inner = item_id();
         let id = track.insert(
@@ -259,7 +261,7 @@ mod tests {
             beats_per_bar: 4,
         };
 
-        let mut track = Track::new(beat_map);
+        let mut track = Track::new(beat_map, "Unnamed".into());
 
         let real_0s = Time::Real(RealTime::from_secs_f64(0.0));
         let real_1s = Time::Real(RealTime::from_secs_f64(1.0));

@@ -1,0 +1,11 @@
+[package]
+name = "rdaw-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdaw-api.workspace = true
+rdaw-core.workspace = true
+rdaw-object.workspace = true
+
+futures-lite.workspace = true

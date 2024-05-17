@@ -1,0 +1,11 @@
+[package]
+name = "rdaw-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdaw-object.workspace = true
+
+futures-lite.workspace = true
+thiserror.workspace = true
+trait-variant.workspace = true

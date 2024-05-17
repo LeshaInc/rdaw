@@ -1,12 +1,15 @@
 mod ipc;
 mod local;
 
+use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use crossbeam_utils::Backoff;
+use futures_lite::Stream;
 
 pub use self::ipc::{IpcChannel, IpcReceiver, IpcSender, RawIpcReceiver, RawIpcSender};
 pub use self::local::{RawLocalReceiver, RawLocalSender};
@@ -26,6 +29,8 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 pub trait RawSender<T> {
+    fn is_closed(&self) -> bool;
+
     fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed>;
 
     fn send_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>>;
@@ -38,6 +43,8 @@ pub trait RawSender<T> {
 }
 
 pub trait RawReceiver<T> {
+    fn is_closed(&self) -> bool;
+
     fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed>;
 
     fn recv_wait_async(&mut self, count: usize, context: &mut Context) -> Poll<Result<(), Closed>>;
@@ -55,6 +62,10 @@ pub struct Sender<T, R: RawSender<T> = RawLocalSender<T>> {
 }
 
 impl<T, R: RawSender<T>> Sender<T, R> {
+    pub fn is_closed(&self) -> bool {
+        self.raw.is_closed()
+    }
+
     pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
         self.raw.try_send(value)
     }
@@ -222,6 +233,14 @@ impl<T, R: RawSender<T>> Sender<T, R> {
     }
 }
 
+impl<T, R: RawSender<T> + Unpin> Unpin for Sender<T, R> {}
+
+impl<T, R: RawSender<T>> fmt::Debug for Sender<T, R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Sender").finish_non_exhaustive()
+    }
+}
+
 /// Error returned from [`Sender::try_send()`].
 #[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
 pub enum TrySendError<T> {
@@ -247,6 +266,10 @@ pub struct Receiver<T, R: RawReceiver<T> = RawLocalReceiver<T>> {
 }
 
 impl<T, R: RawReceiver<T>> Receiver<T, R> {
+    pub fn is_closed(&self) -> bool {
+        self.raw.is_closed()
+    }
+
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         self.raw.try_recv()
     }
@@ -290,10 +313,10 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
         self.recv_deadline(Some(Instant::now() + timeout))
     }
 
-    pub fn recv_async(&mut self) -> impl Future<Output = Result<T, RecvError>> + '_ {
+    fn poll_recv(&mut self, ctx: &mut Context) -> Poll<Result<T, RecvError>> {
         let backoff = Backoff::new();
 
-        std::future::poll_fn(move |ctx| loop {
+        loop {
             match self.raw.try_recv() {
                 Ok(v) => return Poll::Ready(Ok(v)),
                 Err(TryRecvError::Closed) => return Poll::Ready(Err(RecvError::Closed)),
@@ -312,7 +335,11 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
                     }
                 }
             }
-        })
+        }
+    }
+
+    pub fn recv_async(&mut self) -> impl Future<Output = Result<T, RecvError>> + '_ {
+        std::future::poll_fn(move |ctx| self.poll_recv(ctx))
     }
 
     pub fn try_recv_slice(&mut self, slice: &mut [T]) -> Result<(), TryRecvError>
@@ -396,6 +423,22 @@ impl<T, R: RawReceiver<T>> Receiver<T, R> {
                 }
             }
         })
+    }
+}
+
+impl<T, R: RawReceiver<T>> fmt::Debug for Receiver<T, R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Receiver").finish_non_exhaustive()
+    }
+}
+
+impl<T, R: RawReceiver<T> + Unpin> Unpin for Receiver<T, R> {}
+
+impl<T, R: RawReceiver<T> + Unpin> Stream for Receiver<T, R> {
+    type Item = T;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.poll_recv(cx).map(|v| v.ok())
     }
 }
 

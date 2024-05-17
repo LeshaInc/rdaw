@@ -1,6 +1,7 @@
 mod ipc;
 mod local;
 
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::sync::atomic::AtomicU8;
@@ -306,6 +307,12 @@ impl<T, U, B: Buffer<T, U>> Drop for Producer<T, U, B> {
     }
 }
 
+impl<T, U, B: Buffer<T, U>> fmt::Debug for Producer<T, U, B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Producer").finish_non_exhaustive()
+    }
+}
+
 /// Error returned from [`Producer::push()`].
 #[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
 pub enum PushError<T = ()> {
@@ -528,6 +535,12 @@ impl<T, U, B: Buffer<T, U>> Drop for Consumer<T, U, B> {
             // SAFETY: Refcount is 0, so the buffer can be dropped
             unsafe { drop_buffer(&mut self.buffer, read_idx, write_idx) };
         }
+    }
+}
+
+impl<T, U, B: Buffer<T, U>> fmt::Debug for Consumer<T, U, B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Consumer").finish_non_exhaustive()
     }
 }
 

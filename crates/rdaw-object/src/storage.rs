@@ -21,6 +21,10 @@ impl<T: Object> Storage<T> {
         }
     }
 
+    pub fn contains_id(&self, id: T::Id) -> bool {
+        self.map.contains_key(id)
+    }
+
     pub fn insert(&mut self, object: T) -> T::Id {
         self.map.insert(Entry { object })
     }

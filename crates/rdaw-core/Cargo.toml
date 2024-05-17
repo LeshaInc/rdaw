@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 crossbeam-queue.workspace = true
 crossbeam-utils.workspace = true
+futures-lite.workspace = true
 libc.workspace = true
 nix.workspace = true
 rand.workspace = true

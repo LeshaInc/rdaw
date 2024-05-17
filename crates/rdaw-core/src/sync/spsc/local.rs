@@ -72,6 +72,10 @@ impl<T> RawLocalSender<T> {
 }
 
 impl<T> RawSender<T> for RawLocalSender<T> {
+    fn is_closed(&self) -> bool {
+        self.producer.is_closed()
+    }
+
     #[cold]
     fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.producer.userdata();
@@ -152,6 +156,8 @@ impl<T> RawSender<T> for RawLocalSender<T> {
     }
 }
 
+impl<T> Unpin for RawLocalSender<T> {}
+
 impl<T> Drop for RawLocalSender<T> {
     fn drop(&mut self) {
         self.producer.close();
@@ -188,6 +194,10 @@ impl<T> RawLocalReceiver<T> {
 }
 
 impl<T> RawReceiver<T> for RawLocalReceiver<T> {
+    fn is_closed(&self) -> bool {
+        self.consumer.is_closed()
+    }
+
     #[cold]
     fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed> {
         let ud = self.consumer.userdata();
@@ -267,6 +277,8 @@ impl<T> RawReceiver<T> for RawLocalReceiver<T> {
         Ok(())
     }
 }
+
+impl<T> Unpin for RawLocalReceiver<T> {}
 
 impl<T> Drop for RawLocalReceiver<T> {
     fn drop(&mut self) {
