@@ -36,6 +36,10 @@ impl<T: Object> Storage<T> {
     pub fn get_mut(&mut self, id: T::Id) -> Option<&mut T> {
         self.map.get_mut(id).map(|v| &mut v.object)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (T::Id, &T)> + '_ {
+        self.map.iter().map(|(id, entry)| (id, &entry.object))
+    }
 }
 
 impl<T: Object> Index<T::Id> for Storage<T> {

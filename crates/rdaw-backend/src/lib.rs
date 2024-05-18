@@ -4,7 +4,7 @@ mod subscribers;
 mod track;
 
 use async_channel::{Receiver, Sender};
-use rdaw_api::{Operations, TrackEvent};
+use rdaw_api::TrackEvent;
 use rdaw_object::{Hub, TrackId};
 
 pub use self::blob::{BlobCache, BlobOperation};
@@ -71,7 +71,7 @@ pub struct BackendHandle {
     sender: Sender<Operation>,
 }
 
-impl Operations for BackendHandle {}
+impl rdaw_api::Backend for BackendHandle {}
 
 #[derive(Debug)]
 pub enum Operation {

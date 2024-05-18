@@ -13,6 +13,8 @@ crate::dispatch::define_dispatch_ops! {
 
     impl TrackOperations for BackendHandle;
 
+    ListTracks => list_tracks() -> Result<Vec<TrackId>>;
+
     CreateTrack => create_track(
         name: String,
     ) -> Result<TrackId>;
@@ -67,6 +69,12 @@ crate::dispatch::define_dispatch_ops! {
 }
 
 impl Backend {
+    #[instrument(skip_all, err)]
+    pub async fn list_tracks(&self) -> Result<Vec<TrackId>> {
+        let tracks = self.hub.tracks.iter().map(|(id, _)| id).collect();
+        Ok(tracks)
+    }
+
     #[instrument(skip_all, err)]
     pub async fn create_track(&mut self, name: String) -> Result<TrackId> {
         // TODO: remove this

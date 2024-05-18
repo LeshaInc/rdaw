@@ -25,15 +25,22 @@
           buildInputs = with pkgs; [
             clangStdenv
 
-            pipewire
             dbus
+            libxkbcommon
+            pipewire
+            vulkan-loader
+            vulkan-validation-layers
+            wayland
 
             pkg-config
             rust-toolchain
             rustPlatform.bindgenHook
           ];
 
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
+          VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d/";
           RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
+          RUST_LOG = "warn,rdaw=trace";
           RUST_BACKTRACE = 1;
         };
       }
