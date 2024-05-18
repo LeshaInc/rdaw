@@ -21,6 +21,8 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
+
 pub trait Backend: TrackOperations + BlobOperations + Sync + 'static {}
 
 #[trait_variant::make(Send)]
@@ -29,10 +31,7 @@ pub trait TrackOperations {
 
     async fn create_track(&self, name: String) -> Result<TrackId>;
 
-    async fn subscribe_track(
-        &self,
-        id: TrackId,
-    ) -> Result<Pin<Box<dyn Stream<Item = TrackEvent> + Send + 'static>>>;
+    async fn subscribe_track(&self, id: TrackId) -> Result<BoxStream<TrackEvent>>;
 
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 
