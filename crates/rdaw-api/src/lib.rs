@@ -6,6 +6,8 @@ use rdaw_object::{BlobId, ItemId, Time, TrackId, TrackItem, TrackItemId};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Disconnected")]
+    Disconnected,
     #[error("invalid ID")]
     InvalidId,
     #[error("filesystem error: {path}: {error}")]
@@ -18,15 +20,17 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+pub trait Operations: TrackOperations + BlobOperations {}
+
 #[trait_variant::make(Send)]
 pub trait TrackOperations {
-    async fn create_track(&mut self, name: String) -> Result<TrackId>;
+    async fn create_track(&self, name: String) -> Result<TrackId>;
 
-    async fn subscribe_track(&mut self, id: TrackId) -> Result<impl Stream<Item = TrackEvent>>;
+    async fn subscribe_track(&self, id: TrackId) -> Result<impl Stream<Item = TrackEvent>>;
 
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 
-    async fn set_track_name(&mut self, id: TrackId, name: String) -> Result<()>;
+    async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
 
     async fn get_track_range(
         &self,
@@ -36,7 +40,7 @@ pub trait TrackOperations {
     ) -> Result<Vec<TrackItemId>>;
 
     async fn add_track_item(
-        &mut self,
+        &self,
         id: TrackId,
         item_id: ItemId,
         position: Time,
@@ -45,17 +49,17 @@ pub trait TrackOperations {
 
     async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem>;
 
-    async fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()>;
+    async fn remove_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<()>;
 
     async fn move_track_item(
-        &mut self,
+        &self,
         id: TrackId,
         item_id: TrackItemId,
         new_position: Time,
     ) -> Result<()>;
 
     async fn resize_track_item(
-        &mut self,
+        &self,
         id: TrackId,
         item_id: TrackItemId,
         new_duration: Time,
@@ -87,7 +91,7 @@ pub enum TrackEvent {
 
 #[trait_variant::make(Send)]
 pub trait BlobOperations {
-    async fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId>;
+    async fn create_internal_blob(&self, data: Vec<u8>) -> Result<BlobId>;
 
-    async fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId>;
+    async fn create_external_blob(&self, path: PathBuf) -> Result<BlobId>;
 }

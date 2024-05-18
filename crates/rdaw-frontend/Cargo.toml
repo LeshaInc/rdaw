@@ -1,0 +1,10 @@
+[package]
+name = "rdaw-frontend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdaw-api.workspace = true
+rdaw-ui-kit.workspace = true
+
+futures-lite.workspace = true

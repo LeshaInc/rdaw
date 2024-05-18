@@ -1,11 +1,74 @@
-use futures_lite::Stream;
 use rdaw_api::{Error, Result, TrackEvent, TrackOperations};
 use rdaw_object::{BeatMap, ItemId, Time, Track, TrackId, TrackItem, TrackItemId};
+use tracing::instrument;
 
-use crate::Backend;
+use crate::{Backend, BackendHandle, Subscriber};
 
-impl TrackOperations for Backend {
-    async fn create_track(&mut self, name: String) -> Result<TrackId> {
+crate::dispatch::define_dispatch_ops! {
+    pub enum TrackOperation;
+
+    impl Backend {
+        pub fn dispatch_track_operation;
+    }
+
+    impl TrackOperations for BackendHandle;
+
+    CreateTrack => create_track(
+        name: String,
+    ) -> Result<TrackId>;
+
+    SubscribeTrack => subscribe_track(
+        id: TrackId,
+    ) -> Result<Subscriber<TrackEvent>>;
+
+    GetTrackName => get_track_name(
+        id: TrackId,
+    ) -> Result<String>;
+
+    SetTrackName => set_track_name(
+        id: TrackId,
+        new_name: String,
+    ) -> Result<()>;
+
+    GetTrackRange => get_track_range(
+        id: TrackId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Result<Vec<TrackItemId>>;
+
+    AddTrackItem => add_track_item(
+        id: TrackId,
+        item_id: ItemId,
+        position: Time,
+        duration: Time,
+    ) -> Result<TrackItemId>;
+
+    GetTrackItem => get_track_item(
+        id: TrackId,
+        item_id: TrackItemId,
+    ) -> Result<TrackItem>;
+
+    RemoveTrackItem => remove_track_item(
+        id: TrackId,
+        item_id: TrackItemId,
+    ) -> Result<()>;
+
+    MoveTrackItem => move_track_item(
+        id: TrackId,
+        item_id: TrackItemId,
+        new_position: Time,
+    ) -> Result<()>;
+
+    ResizeTrackItem => resize_track_item(
+        id: TrackId,
+        item_id: TrackItemId,
+        new_duration: Time,
+    ) -> Result<()>;
+}
+
+impl Backend {
+    #[instrument(skip_all, err)]
+    pub async fn create_track(&mut self, name: String) -> Result<TrackId> {
         // TODO: remove this
         let beat_map = BeatMap {
             beats_per_minute: 120.0,
@@ -17,7 +80,8 @@ impl TrackOperations for Backend {
         Ok(id)
     }
 
-    async fn subscribe_track(&mut self, id: TrackId) -> Result<impl Stream<Item = TrackEvent>> {
+    #[instrument(skip_all, err)]
+    pub async fn subscribe_track(&mut self, id: TrackId) -> Result<Subscriber<TrackEvent>> {
         if !self.hub.tracks.contains_id(id) {
             return Err(Error::InvalidId);
         }
@@ -25,12 +89,14 @@ impl TrackOperations for Backend {
         Ok(self.track_subscribers.subscribe(id))
     }
 
-    async fn get_track_name(&self, id: TrackId) -> Result<String> {
+    #[instrument(skip_all, err)]
+    pub async fn get_track_name(&self, id: TrackId) -> Result<String> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         Ok(track.name.clone())
     }
 
-    async fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
+    #[instrument(skip_all, err)]
+    pub async fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
         track.name.clone_from(&new_name);
 
@@ -40,7 +106,8 @@ impl TrackOperations for Backend {
         Ok(())
     }
 
-    async fn get_track_range(
+    #[instrument(skip_all, err)]
+    pub async fn get_track_range(
         &self,
         id: TrackId,
         start: Option<Time>,
@@ -51,7 +118,8 @@ impl TrackOperations for Backend {
         Ok(items)
     }
 
-    async fn add_track_item(
+    #[instrument(skip_all, err)]
+    pub async fn add_track_item(
         &mut self,
         id: TrackId,
         item_id: ItemId,
@@ -72,13 +140,15 @@ impl TrackOperations for Backend {
         Ok(item_id)
     }
 
-    async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
+    #[instrument(skip_all, err)]
+    pub async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         let item = track.get(item_id).ok_or(Error::InvalidId)?;
         Ok(item.clone())
     }
 
-    async fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
+    #[instrument(skip_all, err)]
+    pub async fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
         track.remove(item_id);
 
@@ -88,7 +158,8 @@ impl TrackOperations for Backend {
         Ok(())
     }
 
-    async fn move_track_item(
+    #[instrument(skip_all, err)]
+    pub async fn move_track_item(
         &mut self,
         id: TrackId,
         item_id: TrackItemId,
@@ -107,7 +178,8 @@ impl TrackOperations for Backend {
         Ok(())
     }
 
-    async fn resize_track_item(
+    #[instrument(skip_all, err)]
+    pub async fn resize_track_item(
         &mut self,
         id: TrackId,
         item_id: TrackItemId,

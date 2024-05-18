@@ -1,8 +1,10 @@
 use std::hash::Hash;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use futures_lite::Stream;
 use rdaw_core::collections::HashMap;
-use rdaw_core::sync::spsc::{self, Sender};
+use rdaw_core::sync::spsc::{self, Receiver, Sender};
 
 const CAPACITY: usize = 8;
 
@@ -20,10 +22,10 @@ impl<K, E> Subscribers<K, E> {
 }
 
 impl<K: Copy + Eq + Hash, E: Clone> Subscribers<K, E> {
-    pub fn subscribe(&mut self, key: K) -> impl Stream<Item = E> {
+    pub fn subscribe(&mut self, key: K) -> Subscriber<E> {
         let (sender, receiver) = spsc::channel(CAPACITY);
         self.map.entry(key).or_default().push(sender);
-        receiver
+        Subscriber { receiver }
     }
 
     pub async fn notify(&mut self, key: K, event: E) {
@@ -57,5 +59,18 @@ impl<K: Copy + Eq + Hash, E: Clone> Subscribers<K, E> {
 impl<K, E> Default for Subscribers<K, E> {
     fn default() -> Subscribers<K, E> {
         Subscribers::new()
+    }
+}
+
+#[derive(Debug)]
+pub struct Subscriber<E> {
+    receiver: Receiver<E>,
+}
+
+impl<E> Stream for Subscriber<E> {
+    type Item = E;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.receiver).poll_next(cx)
     }
 }

@@ -5,11 +5,31 @@ use blake3::Hash;
 use rdaw_api::{BlobOperations, Error, Result};
 use rdaw_core::collections::HashMap;
 use rdaw_object::{Blob, BlobId};
+use tracing::instrument;
 
-use crate::Backend;
+use crate::{Backend, BackendHandle};
 
-impl BlobOperations for Backend {
-    async fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId> {
+crate::dispatch::define_dispatch_ops! {
+    pub enum BlobOperation;
+
+    impl Backend {
+        pub fn dispatch_blob_operation;
+    }
+
+    impl BlobOperations for BackendHandle;
+
+    CreateInternalBlob => create_internal_blob(
+        data: Vec<u8>,
+    ) -> Result<BlobId>;
+
+    CreateExternalBlob => create_external_blob(
+        path: PathBuf,
+    ) -> Result<BlobId>;
+}
+
+impl Backend {
+    #[instrument(skip_all, err)]
+    pub async fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId> {
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);
 
@@ -19,7 +39,8 @@ impl BlobOperations for Backend {
         Ok(id)
     }
 
-    async fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId> {
+    #[instrument(skip_all, err)]
+    pub async fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId> {
         let data = std::fs::read(&path).map_err(|error| Error::Filesystem {
             error,
             path: path.clone(),

@@ -8,5 +8,8 @@ rdaw-api.workspace = true
 rdaw-core.workspace = true
 rdaw-object.workspace = true
 
+async-channel.workspace = true
 blake3.workspace = true
 futures-lite.workspace = true
+oneshot.workspace = true
+tracing.workspace = true 
