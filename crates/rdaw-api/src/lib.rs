@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::pin::Pin;
 
 use futures_lite::Stream;
 use rdaw_core::time::RealTime;
@@ -28,7 +29,10 @@ pub trait TrackOperations {
 
     async fn create_track(&self, name: String) -> Result<TrackId>;
 
-    async fn subscribe_track(&self, id: TrackId) -> Result<impl Stream<Item = TrackEvent>>;
+    async fn subscribe_track(
+        &self,
+        id: TrackId,
+    ) -> Result<Pin<Box<dyn Stream<Item = TrackEvent> + Send + 'static>>>;
 
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 

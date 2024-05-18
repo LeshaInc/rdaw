@@ -1,4 +1,6 @@
 use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use async_executor::Executor;
@@ -10,32 +12,53 @@ use floem::taffy::FlexDirection;
 use floem::views::{dyn_stack, h_stack, text_input, v_stack, Decorators};
 use floem::IntoView;
 use futures_lite::future::block_on;
-use rdaw_api::Backend;
+use futures_lite::{Stream, StreamExt};
+use rdaw_api::{Backend, TrackEvent};
 use rdaw_object::TrackId;
 use rdaw_ui_kit::{button, ColorKind, Level, Theme};
 
 fn track_view<B: Backend>(id: TrackId) -> impl IntoView {
     let name = RwSignal::new(String::new());
+    let editor_name = RwSignal::new(String::new());
 
     fetch(
         move |back: Arc<B>| async move { back.get_track_name(id).await },
-        move |res| name.set(res.unwrap()),
+        move |res| {
+            name.set(res.unwrap());
+        },
+    );
+
+    subscribe(
+        move |back: Arc<B>| async move { back.subscribe_track(id).await },
+        move |event| match event {
+            TrackEvent::NameChanged { new_name } => name.set(new_name),
+            _ => {}
+        },
     );
 
     create_effect(move |old| {
+        let editor_name = editor_name.get();
         let name = name.get();
 
-        if old.is_none() {
-            return;
+        if old.is_none() || old.is_some_and(|v| v == editor_name) || editor_name == name {
+            return editor_name;
         };
 
+        let name_clone = editor_name.clone();
+
         fetch(
-            move |back: Arc<B>| async move { back.set_track_name(id, name).await },
+            move |back: Arc<B>| async move { back.set_track_name(id, editor_name).await },
             move |res| res.unwrap(),
         );
+
+        name_clone
     });
 
-    h_stack((text_input(name).placeholder("Name"),))
+    create_effect(move |_| {
+        editor_name.set(name.get());
+    });
+
+    h_stack((text_input(editor_name).placeholder("Name"),))
         .style(|s| s.padding(10).border(1).border_color(Color::BLACK))
 }
 
@@ -99,6 +122,49 @@ where
 
     spawn(async move {
         send(future.await);
+    });
+}
+
+pub fn subscribe<B, T, Fac, Fut, Str, Cb>(factory: Fac, on_message: Cb)
+where
+    B: Backend,
+    T: Send + 'static,
+    Fac: FnOnce(Arc<B>) -> Fut,
+    Fut: Future<Output = rdaw_api::Result<Str>> + Send + 'static,
+    Str: Stream<Item = T> + Send + 'static,
+    Cb: Fn(T) + 'static,
+{
+    fn next<T, Str, Cb>(mut stream: Pin<Box<Str>>, on_message: Rc<Cb>)
+    where
+        T: Send + 'static,
+        Str: Stream<Item = T> + Send + 'static,
+        Cb: Fn(T) + 'static,
+    {
+        let callback = on_message.clone();
+
+        let send_next = create_ext_action(Scope::new(), move |(stream, value)| {
+            callback(value);
+            next(stream, on_message);
+        });
+
+        spawn(async move {
+            let Some(value) = Pin::new(&mut stream).next().await else {
+                return;
+            };
+
+            send_next((stream, value));
+        });
+    }
+
+    let backend = use_context::<Arc<B>>().unwrap();
+    let future = factory(backend);
+
+    let send_stream = create_ext_action(Scope::new(), move |stream| {
+        next(Box::pin(stream), Rc::new(on_message));
+    });
+
+    spawn(async move {
+        send_stream(future.await.unwrap());
     });
 }
 

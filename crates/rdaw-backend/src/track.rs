@@ -1,3 +1,6 @@
+use std::pin::Pin;
+
+use futures_lite::Stream;
 use rdaw_api::{Error, Result, TrackEvent, TrackOperations};
 use rdaw_object::{BeatMap, ItemId, Time, Track, TrackId, TrackItem, TrackItemId};
 use tracing::instrument;
@@ -21,7 +24,7 @@ crate::dispatch::define_dispatch_ops! {
 
     SubscribeTrack => subscribe_track(
         id: TrackId,
-    ) -> Result<Subscriber<TrackEvent>>;
+    ) -> Result<Pin<Box<dyn Stream<Item = TrackEvent> + Send + 'static>>>;
 
     GetTrackName => get_track_name(
         id: TrackId,
@@ -89,12 +92,15 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub async fn subscribe_track(&mut self, id: TrackId) -> Result<Subscriber<TrackEvent>> {
+    pub async fn subscribe_track(
+        &mut self,
+        id: TrackId,
+    ) -> Result<Pin<Box<dyn Stream<Item = TrackEvent> + Send + 'static>>> {
         if !self.hub.tracks.contains_id(id) {
             return Err(Error::InvalidId);
         }
 
-        Ok(self.track_subscribers.subscribe(id))
+        Ok(Box::pin(self.track_subscribers.subscribe(id)))
     }
 
     #[instrument(skip_all, err)]

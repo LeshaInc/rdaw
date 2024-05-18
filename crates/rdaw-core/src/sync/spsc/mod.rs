@@ -134,7 +134,10 @@ impl<T, R: RawSender<T>> Sender<T, R> {
                             Poll::Ready(Err(Closed)) => {
                                 return Poll::Ready(Err(SendError::Closed(v)));
                             }
-                            Poll::Pending => return Poll::Pending,
+                            Poll::Pending => {
+                                value = Some(v);
+                                return Poll::Pending;
+                            }
                         }
                     }
 

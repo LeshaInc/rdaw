@@ -10,7 +10,6 @@ macro_rules! define_dispatch_ops {
 
         $($Name:ident => $method:ident($($arg:ident: $ArgTy:ty),* $(,)?) -> $RetTy:ty;)*
     ) => {
-        #[derive(Debug)]
         pub enum $EnumName {
             $(
                 $Name {

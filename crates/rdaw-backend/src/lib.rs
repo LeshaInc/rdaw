@@ -73,7 +73,6 @@ pub struct BackendHandle {
 
 impl rdaw_api::Backend for BackendHandle {}
 
-#[derive(Debug)]
 pub enum Operation {
     Track(TrackOperation),
     Blob(BlobOperation),
