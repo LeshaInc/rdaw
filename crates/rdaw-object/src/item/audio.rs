@@ -19,7 +19,7 @@ impl Object for AudioItem {
 
     fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
         let source = &hub.audio_sources[self.source];
-        callback(source.uuid);
+        callback(source.uuid());
         source.trace(hub, callback);
     }
 }

@@ -29,6 +29,7 @@ pub trait Object {
 
 #[derive(Debug, Default)]
 pub struct Hub {
+    pub blobs: Storage<Blob>,
     pub tracks: Storage<Track>,
     pub audio_items: Storage<AudioItem>,
     pub audio_sources: Storage<AudioSource>,

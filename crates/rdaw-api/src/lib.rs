@@ -1,11 +1,19 @@
+use std::path::PathBuf;
+
 use futures_lite::Stream;
 use rdaw_core::time::RealTime;
-use rdaw_object::{ItemId, Time, TrackId, TrackItem, TrackItemId};
+use rdaw_object::{BlobId, ItemId, Time, TrackId, TrackItem, TrackItemId};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid ID")]
     InvalidId,
+    #[error("filesystem error: {path}: {error}")]
+    Filesystem {
+        path: PathBuf,
+        #[source]
+        error: std::io::Error,
+    },
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -75,4 +83,11 @@ pub enum TrackEvent {
         id: TrackItemId,
         new_duration: RealTime,
     },
+}
+
+#[trait_variant::make(Send)]
+pub trait BlobOperations {
+    async fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId>;
+
+    async fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId>;
 }

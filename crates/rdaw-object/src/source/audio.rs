@@ -8,9 +8,27 @@ slotmap::new_key_type! {
 
 #[derive(Debug, Clone)]
 pub struct AudioSource {
-    pub uuid: Uuid,
-    pub blob: BlobId,
-    pub metadata: AudioMetadata,
+    uuid: Uuid,
+    blob: BlobId,
+    metadata: AudioMetadata,
+}
+
+impl AudioSource {
+    pub fn new(blob: BlobId, metadata: AudioMetadata) -> AudioSource {
+        AudioSource {
+            uuid: Uuid::new_v4(),
+            blob,
+            metadata,
+        }
+    }
+
+    pub fn blob(&self) -> BlobId {
+        self.blob
+    }
+
+    pub fn metadata(&self) -> &AudioMetadata {
+        &self.metadata
+    }
 }
 
 impl Object for AudioSource {
