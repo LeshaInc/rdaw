@@ -1,8 +1,6 @@
-use crate::{AudioSourceId, Hub, Object, Uuid};
+use rdaw_api::{AudioItemId, AudioSourceId};
 
-slotmap::new_key_type! {
-    pub struct AudioItemId;
-}
+use crate::{Hub, Object, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct AudioItem {

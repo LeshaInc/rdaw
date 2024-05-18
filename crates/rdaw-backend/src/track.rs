@@ -1,5 +1,8 @@
-use rdaw_api::{BoxStream, Error, Result, TrackEvent, TrackOperations};
-use rdaw_object::{BeatMap, ItemId, Time, Track, TrackId, TrackItem, TrackItemId};
+use rdaw_api::{
+    BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackId, TrackItem, TrackItemId,
+    TrackOperations,
+};
+use rdaw_object::{BeatMap, Track};
 use tracing::instrument;
 
 use crate::{Backend, BackendHandle};
@@ -140,8 +143,8 @@ impl Backend {
         let item = track.get(item_id).ok_or(Error::InvalidId)?;
         let event = TrackEvent::ItemAdded {
             id: item_id,
-            start: item.real_start(),
-            end: item.real_end(),
+            start: item.real_start,
+            end: item.real_end,
         };
         self.track_subscribers.notify(id, event).await;
 
@@ -179,7 +182,7 @@ impl Backend {
         let item = track.get(item_id).ok_or(Error::InvalidId)?;
         let event = TrackEvent::ItemMoved {
             id: item_id,
-            new_start: item.real_start(),
+            new_start: item.real_start,
         };
         self.track_subscribers.notify(id, event).await;
 

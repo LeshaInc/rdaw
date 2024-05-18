@@ -4,8 +4,8 @@ mod subscribers;
 mod track;
 
 use async_channel::{Receiver, Sender};
-use rdaw_api::TrackEvent;
-use rdaw_object::{Hub, TrackId};
+use rdaw_api::{TrackEvent, TrackId};
+use rdaw_object::Hub;
 
 pub use self::blob::{BlobCache, BlobOperation};
 pub use self::subscribers::{Subscriber, Subscribers};

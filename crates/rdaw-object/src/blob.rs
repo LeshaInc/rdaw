@@ -1,13 +1,10 @@
 use std::path::PathBuf;
 
 use blake3::Hash;
+use rdaw_api::BlobId;
 use uuid::Uuid;
 
 use crate::Object;
-
-slotmap::new_key_type! {
-    pub struct BlobId;
-}
 
 #[derive(Debug, Clone)]
 pub enum Blob {

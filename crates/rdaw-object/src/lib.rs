@@ -1,4 +1,3 @@
-mod beat;
 mod beat_map;
 mod blob;
 mod item;
@@ -9,13 +8,12 @@ mod track;
 use slotmap::Key;
 pub use uuid::Uuid;
 
-pub use self::beat::{BeatTime, Time};
 pub use self::beat_map::BeatMap;
-pub use self::blob::{Blob, BlobId};
-pub use self::item::{AudioItem, AudioItemId, ItemId};
-pub use self::source::{AudioSource, AudioSourceId, Source, SourceId};
+pub use self::blob::Blob;
+pub use self::item::AudioItem;
+pub use self::source::AudioSource;
 pub use self::storage::Storage;
-pub use self::track::{Track, TrackId, TrackItem, TrackItemId};
+pub use self::track::Track;
 
 pub trait Object {
     type Id: Key;

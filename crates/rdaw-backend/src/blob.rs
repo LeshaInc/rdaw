@@ -2,9 +2,9 @@ use std::fmt;
 use std::path::PathBuf;
 
 use blake3::Hash;
-use rdaw_api::{BlobOperations, Error, Result};
+use rdaw_api::{BlobId, BlobOperations, Error, Result};
 use rdaw_core::collections::HashMap;
-use rdaw_object::{Blob, BlobId};
+use rdaw_object::Blob;
 use tracing::instrument;
 
 use crate::{Backend, BackendHandle};

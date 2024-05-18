@@ -13,8 +13,7 @@ use floem::views::{dyn_stack, h_stack, text_input, v_stack, Decorators};
 use floem::IntoView;
 use futures_lite::future::block_on;
 use futures_lite::{Stream, StreamExt};
-use rdaw_api::{Backend, TrackEvent};
-use rdaw_object::TrackId;
+use rdaw_api::{Backend, TrackEvent, TrackId};
 use rdaw_ui_kit::{button, ColorKind, Level, Theme};
 
 fn track_view<B: Backend>(id: TrackId) -> impl IntoView {
@@ -30,9 +29,10 @@ fn track_view<B: Backend>(id: TrackId) -> impl IntoView {
 
     subscribe(
         move |back: Arc<B>| async move { back.subscribe_track(id).await },
-        move |event| match event {
-            TrackEvent::NameChanged { new_name } => name.set(new_name),
-            _ => {}
+        move |event| {
+            if let TrackEvent::NameChanged { new_name } = event {
+                name.set(new_name)
+            }
         },
     );
 

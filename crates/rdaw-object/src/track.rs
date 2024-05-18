@@ -1,14 +1,9 @@
+use rdaw_api::{ItemId, Time, TrackId, TrackItem, TrackItemId};
 use rdaw_core::time::RealTime;
 use rstar::{RTree, RTreeObject, AABB};
 use slotmap::SlotMap;
 
-use crate::{BeatMap, Hub, ItemId, Object, Time, Uuid};
-
-slotmap::new_key_type! {
-    pub struct TrackId;
-
-    pub struct TrackItemId;
-}
+use crate::{BeatMap, Hub, Object, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct Track {
@@ -31,8 +26,8 @@ impl Track {
     }
 
     pub fn insert(&mut self, item_id: ItemId, position: Time, duration: Time) -> TrackItemId {
-        let real_start = position.to_real(&self.beat_map);
-        let real_end = real_start + duration.to_real(&self.beat_map);
+        let real_start = self.beat_map.to_real(position);
+        let real_end = real_start + self.beat_map.to_real(duration);
 
         let item = TrackItem {
             inner: item_id,
@@ -61,10 +56,6 @@ impl Track {
         self.items.get(id)
     }
 
-    pub fn get_mut(&mut self, id: TrackItemId) -> Option<&mut TrackItem> {
-        self.items.get_mut(id)
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (TrackItemId, &TrackItem)> + '_ {
         self.items.iter()
     }
@@ -74,8 +65,8 @@ impl Track {
         start: Option<Time>,
         end: Option<Time>,
     ) -> impl Iterator<Item = (TrackItemId, &TrackItem)> + '_ {
-        let start = start.map_or(RealTime::MIN, |t| t.to_real(&self.beat_map));
-        let end = end.map_or(RealTime::MAX, |t| t.to_real(&self.beat_map));
+        let start = start.map_or(RealTime::MIN, |t| self.beat_map.to_real(t));
+        let end = end.map_or(RealTime::MAX, |t| self.beat_map.to_real(t));
 
         let envelope = AABB::from_corners((start.as_nanos(), 0), (end.as_nanos(), 0));
 
@@ -113,7 +104,7 @@ impl Track {
         self.update_item_envelope(id, |item, beat_map| {
             let duration = item.real_duration();
             item.position = new_pos;
-            item.real_start = new_pos.to_real(beat_map);
+            item.real_start = beat_map.to_real(new_pos);
             item.real_end = item.real_start + duration;
         });
     }
@@ -121,7 +112,7 @@ impl Track {
     pub fn resize_item(&mut self, id: TrackItemId, new_duration: Time) {
         self.update_item_envelope(id, |item, beat_map| {
             item.duration = new_duration;
-            item.real_end = item.real_start + new_duration.to_real(beat_map);
+            item.real_end = item.real_start + beat_map.to_real(new_duration);
         });
     }
 }
@@ -135,7 +126,7 @@ impl Object for Track {
 
     fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
         for item in self.items.values() {
-            match item.inner_id() {
+            match item.inner {
                 ItemId::Audio(id) => {
                     let item = &hub.audio_items[id];
                     callback(item.uuid());
@@ -167,49 +158,14 @@ impl RTreeObject for TreeItem {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TrackItem {
-    inner: ItemId,
-    position: Time,
-    duration: Time,
-    real_start: RealTime,
-    real_end: RealTime,
-}
-
-impl TrackItem {
-    pub fn inner_id(&self) -> ItemId {
-        self.inner
-    }
-
-    pub fn position(&self) -> Time {
-        self.position
-    }
-
-    pub fn duration(&self) -> Time {
-        self.duration
-    }
-
-    pub fn real_start(&self) -> RealTime {
-        self.real_start
-    }
-
-    pub fn real_end(&self) -> RealTime {
-        self.real_end
-    }
-
-    pub fn real_duration(&self) -> RealTime {
-        self.real_end - self.real_start
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    use rdaw_api::AudioItemId;
     use slotmap::KeyData;
 
     use super::*;
-    use crate::item::AudioItemId;
 
     fn item_id() -> ItemId {
         static COUNTER: AtomicU64 = AtomicU64::new(0);

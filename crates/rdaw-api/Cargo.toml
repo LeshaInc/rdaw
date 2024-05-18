@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 rdaw-core.workspace = true
-rdaw-object.workspace = true
 
 futures-lite.workspace = true
+slotmap.workspace = true
 thiserror.workspace = true
 trait-variant.workspace = true

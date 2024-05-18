@@ -1,10 +1,7 @@
+use rdaw_api::{AudioSourceId, BlobId};
 use rdaw_core::time::RealTime;
 
-use crate::{BlobId, Object, Uuid};
-
-slotmap::new_key_type! {
-    pub struct AudioSourceId;
-}
+use crate::{Object, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct AudioSource {

@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 rdaw-api.workspace = true
-rdaw-object.workspace = true
 rdaw-ui-kit.workspace = true
 
 async-executor.workspace = true
