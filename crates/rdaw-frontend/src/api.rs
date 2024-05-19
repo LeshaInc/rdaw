@@ -84,7 +84,7 @@ macro_rules! generate_methods {
 generate_methods! {
     fn list_tracks() -> Vec<TrackId>;
 
-    fn create_track(name: String) -> TrackId;
+    fn create_track() -> TrackId;
 
     #[sub]
     fn subscribe_track(id: TrackId) -> TrackEvent;

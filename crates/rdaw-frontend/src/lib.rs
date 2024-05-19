@@ -82,8 +82,7 @@ pub fn run<B: Backend>(backend: B) {
         })
     });
 
-    let master_track =
-        block_on(async move { backend.create_track("Master".into()).await }).unwrap();
+    let master_track = block_on(async move { backend.create_track().await }).unwrap();
 
     floem::launch(move || {
         let view = app_view::<B>(master_track)

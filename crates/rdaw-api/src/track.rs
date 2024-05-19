@@ -12,7 +12,7 @@ slotmap::new_key_type! {
 pub trait TrackOperations {
     async fn list_tracks(&self) -> Result<Vec<TrackId>>;
 
-    async fn create_track(&self, name: String) -> Result<TrackId>;
+    async fn create_track(&self) -> Result<TrackId>;
 
     async fn subscribe_track(&self, id: TrackId) -> Result<BoxStream<TrackEvent>>;
 

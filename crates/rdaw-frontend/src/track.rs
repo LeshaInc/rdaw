@@ -1,8 +1,8 @@
 use floem::event::{Event, EventListener, EventPropagation};
 use floem::peniko::Color;
-use floem::reactive::{create_effect, RwSignal};
+use floem::reactive::{batch, create_effect, RwSignal};
 use floem::taffy::{Display, FlexDirection, Position};
-use floem::views::{dyn_stack, empty, h_stack, text_input, v_stack, Decorators};
+use floem::views::{dyn_stack, empty, h_stack, scroll, text_input, v_stack, Decorators};
 use floem::{IntoView, View};
 use rdaw_api::{Backend, TrackEvent, TrackId};
 use rdaw_core::collections::ImHashMap;
@@ -49,7 +49,7 @@ pub fn track_tree_view<B: Backend>(id: TrackId, show_add: bool) -> impl IntoView
         parents: RwSignal::new(ImHashMap::default()),
     };
 
-    tree_node::<B>(node, state)
+    scroll(tree_node::<B>(node, state).style(|s| s.width_full()))
 }
 
 fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
@@ -72,7 +72,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     });
 
     let add_child = move || {
-        api::create_track::<B>("Unnamed".into(), move |child_id| {
+        api::create_track::<B>(move |child_id| {
             api::insert_track_child::<B>(node.id, child_id, children.with(|v| v.len()))
         });
     };
@@ -137,6 +137,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     let this_view = track_control_panel::<B>(node.id).into_view();
     let this_view_id = this_view.id();
     let this_view = this_view
+        .keyboard_navigatable()
         .style(move |s| {
             s.apply_if(state.selection.get() == Some(node), |s| {
                 s.background(Color::rgba8(255, 0, 0, 20))
@@ -151,9 +152,11 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 return EventPropagation::Continue;
             }
 
-            state.selection.set(Some(node));
-            state.drop_location.set(DropLocation::Forbidden);
-            state.is_dragging.set(true);
+            batch(move || {
+                state.selection.set(Some(node));
+                state.drop_location.set(DropLocation::Forbidden);
+                state.is_dragging.set(true);
+            });
 
             EventPropagation::Stop
         })
@@ -177,7 +180,9 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
             let mut test_id = node.id;
             loop {
                 if sel_node.id == test_id {
-                    state.drop_location.set(DropLocation::Forbidden);
+                    if state.drop_location.get_untracked() != DropLocation::Forbidden {
+                        state.drop_location.set(DropLocation::Forbidden);
+                    }
                     return EventPropagation::Continue;
                 }
 
@@ -194,7 +199,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                     DropLocation::Before(node)
                 }
             } else {
-                if ev.pos.x > size.width * 0.5 || !children.get().is_empty() {
+                if ev.pos.x > size.width * 0.5 || !children.with_untracked(|v| v.is_empty()) {
                     DropLocation::Inside(node)
                 } else {
                     if sel_node.parent == node.parent && sel_node.index == node.index + 1 {
@@ -205,17 +210,23 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 }
             };
 
-            state.drop_location.set(location);
+            let old_location = state.drop_location.get_untracked();
+            if location != old_location {
+                state.drop_location.set(location);
+            }
 
             EventPropagation::Stop
         });
 
     v_stack((
         before_marker,
-        v_stack((this_view, inside_marker)).style(|s| s.position(Position::Relative)),
+        v_stack((
+            h_stack((this_view.style(|s| s.flex_grow(1.0)), add_child_button)),
+            inside_marker,
+        ))
+        .style(|s| s.position(Position::Relative)),
         child_views,
         after_marker,
-        add_child_button,
     ))
     .debug_name("Track")
     .style(|s| s.position(Position::Relative))
@@ -230,7 +241,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
 
         state.is_dragging.set(false);
 
-        let Some(node) = state.selection.get() else {
+        let Some(node) = state.selection.get_untracked() else {
             return;
         };
 
@@ -239,7 +250,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
             return;
         };
 
-        let drop_location = state.drop_location.get();
+        let drop_location = state.drop_location.get_untracked();
 
         let (new_parent, new_index) = match drop_location {
             DropLocation::Before(Node {

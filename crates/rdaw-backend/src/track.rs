@@ -3,6 +3,7 @@ use rdaw_api::{
     TrackOperations,
 };
 use rdaw_object::{BeatMap, Track};
+use slotmap::Key;
 use tracing::instrument;
 
 use crate::{Backend, BackendHandle};
@@ -18,9 +19,7 @@ crate::dispatch::define_dispatch_ops! {
 
     ListTracks => list_tracks() -> Result<Vec<TrackId>>;
 
-    CreateTrack => create_track(
-        name: String,
-    ) -> Result<TrackId>;
+    CreateTrack => create_track() -> Result<TrackId>;
 
     SubscribeTrack => subscribe_track(
         id: TrackId,
@@ -101,15 +100,23 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub async fn create_track(&mut self, name: String) -> Result<TrackId> {
+    pub async fn create_track(&mut self) -> Result<TrackId> {
         // TODO: remove this
         let beat_map = BeatMap {
             beats_per_minute: 120.0,
             beats_per_bar: 4,
         };
 
-        let track = Track::new(beat_map, name);
+        let track = Track::new(beat_map, String::new());
         let id = self.hub.tracks.insert(track);
+
+        let mut id_str = format!("{:?}", id.data());
+        if let Some(v) = id_str.find("v") {
+            id_str.truncate(v);
+        }
+
+        self.hub.tracks[id].name = format!("Track {id_str}");
+
         Ok(id)
     }
 

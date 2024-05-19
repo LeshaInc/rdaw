@@ -12,4 +12,5 @@ async-channel.workspace = true
 blake3.workspace = true
 futures-lite.workspace = true
 oneshot.workspace = true
+slotmap.workspace = true
 tracing.workspace = true 
