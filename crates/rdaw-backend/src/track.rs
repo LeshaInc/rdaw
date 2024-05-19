@@ -162,6 +162,10 @@ impl Backend {
 
         track.insert_child(child, position);
 
+        let new_children = track.children().collect();
+        let event = TrackEvent::ChildrenChanged { new_children };
+        self.track_subscribers.notify(parent, event).await;
+
         Ok(())
     }
 
@@ -181,6 +185,10 @@ impl Backend {
 
         track.move_child(old_position, new_position);
 
+        let new_children = track.children().collect();
+        let event = TrackEvent::ChildrenChanged { new_children };
+        self.track_subscribers.notify(parent, event).await;
+
         Ok(())
     }
 
@@ -193,6 +201,10 @@ impl Backend {
         }
 
         track.remove_child(position);
+
+        let new_children = track.children().collect();
+        let event = TrackEvent::ChildrenChanged { new_children };
+        self.track_subscribers.notify(parent, event).await;
 
         Ok(())
     }
