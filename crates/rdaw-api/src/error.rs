@@ -6,6 +6,8 @@ pub enum Error {
     Disconnected,
     #[error("invalid ID")]
     InvalidId,
+    #[error("index out of bounds")]
+    IndexOutOfBounds,
     #[error("filesystem error: {path}: {error}")]
     Filesystem {
         path: PathBuf,

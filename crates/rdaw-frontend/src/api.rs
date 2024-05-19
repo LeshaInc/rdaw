@@ -93,6 +93,22 @@ generate_methods! {
 
     fn set_track_name(id: TrackId, name: String);
 
+    fn get_track_children(parent: TrackId) -> Vec<TrackId>;
+
+    fn insert_track_child(
+        parent: TrackId,
+        child: TrackId,
+        position: usize,
+    );
+
+    fn move_track_child(
+        parent: TrackId,
+        old_position: usize,
+        new_position: usize,
+    );
+
+    fn remove_track_child(parent: TrackId, position: usize);
+
     fn get_track_range(
         id: TrackId,
         start: Option<Time>,

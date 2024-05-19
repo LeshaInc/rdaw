@@ -20,6 +20,24 @@ pub trait TrackOperations {
 
     async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
 
+    async fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>>;
+
+    async fn insert_track_child(
+        &self,
+        parent: TrackId,
+        child: TrackId,
+        position: usize,
+    ) -> Result<()>;
+
+    async fn move_track_child(
+        &self,
+        parent: TrackId,
+        old_position: usize,
+        new_position: usize,
+    ) -> Result<()>;
+
+    async fn remove_track_child(&self, parent: TrackId, position: usize) -> Result<()>;
+
     async fn get_track_range(
         &self,
         id: TrackId,
@@ -73,6 +91,9 @@ impl TrackItem {
 pub enum TrackEvent {
     NameChanged {
         new_name: String,
+    },
+    ChildrenChanged {
+        new_children: Vec<TrackId>,
     },
     ItemAdded {
         id: TrackItemId,

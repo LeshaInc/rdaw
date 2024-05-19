@@ -10,6 +10,7 @@ pub struct Track {
     pub name: String,
     uuid: Uuid,
     beat_map: BeatMap,
+    children: Vec<TrackId>,
     items: SlotMap<TrackItemId, TrackItem>,
     items_tree: RTree<TreeItem>,
 }
@@ -20,9 +21,27 @@ impl Track {
             name,
             uuid: Uuid::new_v4(),
             beat_map,
+            children: Vec::new(),
             items: SlotMap::default(),
             items_tree: RTree::new(),
         }
+    }
+
+    pub fn children(&self) -> impl ExactSizeIterator<Item = TrackId> + '_ {
+        self.children.iter().copied()
+    }
+
+    pub fn insert_child(&mut self, child: TrackId, position: usize) {
+        self.children.insert(position, child);
+    }
+
+    pub fn move_child(&mut self, old_position: usize, new_position: usize) {
+        let child = self.children.remove(old_position);
+        self.children.insert(new_position, child);
+    }
+
+    pub fn remove_child(&mut self, position: usize) {
+        self.children.remove(position);
     }
 
     pub fn insert(&mut self, item_id: ItemId, position: Time, duration: Time) -> TrackItemId {

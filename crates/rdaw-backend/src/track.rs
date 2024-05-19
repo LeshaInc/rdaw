@@ -35,6 +35,27 @@ crate::dispatch::define_dispatch_ops! {
         new_name: String,
     ) -> Result<()>;
 
+    GetTrackChildren => get_track_children(
+        parent: TrackId
+    ) -> Result<Vec<TrackId>>;
+
+    InsertTrackChild => insert_track_child(
+        parent: TrackId,
+        child: TrackId,
+        position: usize,
+    ) -> Result<()>;
+
+    MoveTrackChild => move_track_child(
+        parent: TrackId,
+        old_position: usize,
+        new_position: usize,
+    ) -> Result<()>;
+
+    RemoveTrackChild => remove_track_child(
+        parent: TrackId,
+        position: usize
+    ) -> Result<()>;
+
     GetTrackRange => get_track_range(
         id: TrackId,
         start: Option<Time>,
@@ -113,6 +134,65 @@ impl Backend {
 
         let event = TrackEvent::NameChanged { new_name };
         self.track_subscribers.notify(id, event).await;
+
+        Ok(())
+    }
+
+    #[instrument(skip_all, err)]
+    async fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>> {
+        let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
+        let children = track.children().collect();
+        Ok(children)
+    }
+
+    #[instrument(skip_all, err)]
+    async fn insert_track_child(
+        &mut self,
+        parent: TrackId,
+        child: TrackId,
+        position: usize,
+    ) -> Result<()> {
+        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
+
+        if position > track.children().len() {
+            return Err(Error::IndexOutOfBounds);
+        }
+
+        // TODO: check for recursive relationships
+
+        track.insert_child(child, position);
+
+        Ok(())
+    }
+
+    #[instrument(skip_all, err)]
+    pub async fn move_track_child(
+        &mut self,
+        parent: TrackId,
+        old_position: usize,
+        new_position: usize,
+    ) -> Result<()> {
+        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
+        let num_children = track.children().len();
+
+        if old_position >= num_children || new_position >= num_children {
+            return Err(Error::IndexOutOfBounds);
+        }
+
+        track.move_child(old_position, new_position);
+
+        Ok(())
+    }
+
+    #[instrument(skip_all, err)]
+    pub async fn remove_track_child(&mut self, parent: TrackId, position: usize) -> Result<()> {
+        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
+
+        if position >= track.children().len() {
+            return Err(Error::IndexOutOfBounds);
+        }
+
+        track.remove_child(position);
 
         Ok(())
     }
