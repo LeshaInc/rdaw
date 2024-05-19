@@ -5,9 +5,11 @@ edition = "2021"
 
 [dependencies]
 rdaw-api.workspace = true
+rdaw-core.workspace = true
 rdaw-ui-kit.workspace = true
 
 async-executor.workspace = true
 floem.workspace = true
 futures-lite.workspace = true
+im.workspace = true
 tracing.workspace = true

@@ -22,21 +22,18 @@ pub trait TrackOperations {
 
     async fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>>;
 
-    async fn insert_track_child(
+    async fn insert_track_child(&self, parent: TrackId, child: TrackId, index: usize)
+        -> Result<()>;
+
+    async fn move_track(
         &self,
-        parent: TrackId,
-        child: TrackId,
-        position: usize,
+        old_parent: TrackId,
+        old_index: usize,
+        new_parent: TrackId,
+        new_index: usize,
     ) -> Result<()>;
 
-    async fn move_track_child(
-        &self,
-        parent: TrackId,
-        old_position: usize,
-        new_position: usize,
-    ) -> Result<()>;
-
-    async fn remove_track_child(&self, parent: TrackId, position: usize) -> Result<()>;
+    async fn remove_track_child(&self, parent: TrackId, index: usize) -> Result<()>;
 
     async fn get_track_range(
         &self,

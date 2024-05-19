@@ -8,19 +8,20 @@ use std::sync::Arc;
 
 use async_executor::Executor;
 use floem::ext_event::create_ext_action;
+use floem::keyboard::{Key, Modifiers, NamedKey};
 use floem::reactive::{provide_context, use_context, Scope};
 use floem::views::{h_stack, Decorators};
-use floem::IntoView;
+use floem::{IntoView, View};
 use futures_lite::future::block_on;
 use futures_lite::StreamExt;
 use rdaw_api::{Backend, BoxStream, TrackId};
 use rdaw_ui_kit::Theme;
-use track::track_view;
+use track::track_tree_view;
 
 fn app_view<B: Backend>(master_track: TrackId) -> impl IntoView {
     h_stack((
-        track_view::<B>(master_track, 0).style(|s| s.flex_grow(1.0)),
-        track_view::<B>(master_track, 0).style(|s| s.flex_grow(1.0)),
+        track_tree_view::<B>(master_track, false).style(|s| s.flex_grow(1.0)),
+        track_tree_view::<B>(master_track, true).style(|s| s.flex_grow(1.0)),
     ))
     .style(|s| s.width_full())
 }
@@ -84,5 +85,13 @@ pub fn run<B: Backend>(backend: B) {
     let master_track =
         block_on(async move { backend.create_track("Master".into()).await }).unwrap();
 
-    floem::launch(move || app_view::<B>(master_track));
+    floem::launch(move || {
+        let view = app_view::<B>(master_track)
+            .keyboard_navigatable()
+            .into_view();
+        let id = view.id();
+        view.on_key_down(Key::Named(NamedKey::F11), Modifiers::empty(), move |_| {
+            id.inspect()
+        })
+    });
 }

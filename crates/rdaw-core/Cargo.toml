@@ -8,6 +8,7 @@ ahash.workspace = true
 crossbeam-queue.workspace = true
 crossbeam-utils.workspace = true
 futures-lite.workspace = true
+im.workspace = true
 libc.workspace = true
 nix.workspace = true
 rand.workspace = true

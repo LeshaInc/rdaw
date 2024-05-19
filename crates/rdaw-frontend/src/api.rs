@@ -12,7 +12,7 @@ pub fn get_backend<B: Backend>() -> Arc<B> {
 
 #[cold]
 fn handle_error(error: Error) {
-    tracing::error!(?error, "Operation failed");
+    tracing::error!(%error);
 }
 
 macro_rules! generate_method {
@@ -98,16 +98,17 @@ generate_methods! {
     fn insert_track_child(
         parent: TrackId,
         child: TrackId,
-        position: usize,
+        index: usize,
     );
 
-    fn move_track_child(
-        parent: TrackId,
-        old_position: usize,
-        new_position: usize,
+    fn move_track(
+        old_parent: TrackId,
+        old_index: usize,
+        new_parent: TrackId,
+        new_index: usize,
     );
 
-    fn remove_track_child(parent: TrackId, position: usize);
+    fn remove_track_child(parent: TrackId, index: usize);
 
     fn get_track_range(
         id: TrackId,

@@ -31,17 +31,17 @@ impl Track {
         self.children.iter().copied()
     }
 
-    pub fn insert_child(&mut self, child: TrackId, position: usize) {
-        self.children.insert(position, child);
+    pub fn insert_child(&mut self, child: TrackId, index: usize) {
+        self.children.insert(index, child);
     }
 
-    pub fn move_child(&mut self, old_position: usize, new_position: usize) {
-        let child = self.children.remove(old_position);
-        self.children.insert(new_position, child);
+    pub fn move_child(&mut self, old_index: usize, new_index: usize) {
+        let child = self.children.remove(old_index);
+        self.children.insert(new_index, child);
     }
 
-    pub fn remove_child(&mut self, position: usize) {
-        self.children.remove(position);
+    pub fn remove_child(&mut self, index: usize) -> TrackId {
+        self.children.remove(index)
     }
 
     pub fn insert(&mut self, item_id: ItemId, position: Time, duration: Time) -> TrackItemId {
