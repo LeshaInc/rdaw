@@ -24,6 +24,7 @@
         devShell = (pkgs.mkShell.override { stdenv = pkgs.clangStdenv; }) rec {
           buildInputs = with pkgs; [
             clangStdenv
+            mold
 
             dbus
             libxkbcommon
@@ -39,6 +40,8 @@
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d/";
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "${pkgs.llvmPackages.clangUseLLVM}/bin/clang";
+          CARGO_ENCODED_RUSTFLAGS = "-Clink-arg=-fuse-ld=${pkgs.mold}/bin/mold";
           RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
           RUST_LOG = "warn,rdaw=trace";
           RUST_BACKTRACE = 1;
