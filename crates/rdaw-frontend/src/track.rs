@@ -170,14 +170,22 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 return EventPropagation::Continue;
             };
 
-            if node == sel_node {
-                state.drop_location.set(DropLocation::Forbidden);
-                return EventPropagation::Continue;
-            }
-
             let Some(size) = this_view_id.get_size() else {
                 return EventPropagation::Continue;
             };
+
+            let mut test_id = node.id;
+            loop {
+                if sel_node.id == test_id {
+                    state.drop_location.set(DropLocation::Forbidden);
+                    return EventPropagation::Continue;
+                }
+
+                test_id = match state.parents.with_untracked(|v| v.get(&test_id).copied()) {
+                    Some(v) => v,
+                    None => break,
+                };
+            }
 
             let location = if ev.pos.y < size.height * 0.5 {
                 if sel_node.parent == node.parent && sel_node.index + 1 == node.index {
@@ -186,7 +194,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                     DropLocation::Before(node)
                 }
             } else {
-                if ev.pos.x > size.width * 0.75 || !children.get().is_empty() {
+                if ev.pos.x > size.width * 0.5 || !children.get().is_empty() {
                     DropLocation::Inside(node)
                 } else {
                     if sel_node.parent == node.parent && sel_node.index == node.index + 1 {
