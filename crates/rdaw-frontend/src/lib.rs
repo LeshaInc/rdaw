@@ -47,10 +47,7 @@ pub fn stream_for_each<T: Send + 'static>(stream: BoxStream<T>, on_message: impl
     fn next<T: Send + 'static>(mut stream: BoxStream<T>, on_message: Rc<impl Fn(T) + 'static>) {
         spawn(
             async move {
-                let Some(value) = Pin::new(&mut stream).next().await else {
-                    return None;
-                };
-
+                let value = Pin::new(&mut stream).next().await?;
                 Some((stream, value))
             },
             move |v| {

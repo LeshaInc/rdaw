@@ -1,3 +1,4 @@
+use rdaw_core::collections::ImVec;
 use rdaw_core::time::RealTime;
 
 use crate::{BoxStream, ItemId, Result, Time};
@@ -20,7 +21,7 @@ pub trait TrackOperations {
 
     async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
 
-    async fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>>;
+    async fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>>;
 
     async fn insert_track_child(&self, parent: TrackId, child: TrackId, index: usize)
         -> Result<()>;
@@ -90,7 +91,7 @@ pub enum TrackEvent {
         new_name: String,
     },
     ChildrenChanged {
-        new_children: Vec<TrackId>,
+        new_children: ImVec<TrackId>,
     },
     ItemAdded {
         id: TrackItemId,
