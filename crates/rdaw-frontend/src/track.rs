@@ -2,7 +2,7 @@ use floem::event::{Event, EventListener, EventPropagation};
 use floem::peniko::Color;
 use floem::reactive::{batch, create_effect, create_memo, RwSignal};
 use floem::taffy::{Display, FlexDirection, Position};
-use floem::views::{dyn_stack, empty, h_stack, scroll, text_input, v_stack, Decorators};
+use floem::views::{dyn_stack, empty, h_stack, label, scroll, text_input, v_stack, Decorators};
 use floem::{IntoView, View};
 use rdaw_api::{Backend, TrackEvent, TrackId};
 use rdaw_core::collections::{HashSet, ImHashMap, ImVec};
@@ -51,27 +51,15 @@ pub fn track_tree_view<B: Backend>(id: TrackId) -> impl IntoView {
         children: RwSignal::new(ImHashMap::default()),
     };
 
-    scroll(tree_node::<B>(root, state).style(|s| s.width_full()))
+    scroll(h_stack((
+        tcp_tree_node::<B>(root, state).style(|s| s.width(400.0)),
+        tap_tree_node::<B>(root, state),
+    )))
 }
 
-fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
+fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     let tcp_view = track_control_panel::<B>(node.id).into_view();
     let tcp_view_id = tcp_view.id();
-
-    let set_children = move |new_children: ImVec<TrackId>| {
-        state.children.update(move |children| {
-            let new_children = new_children
-                .into_iter()
-                .enumerate()
-                .map(|(index, id)| Node {
-                    id,
-                    parent: Some(node.id),
-                    index,
-                })
-                .collect();
-            children.insert(node, new_children);
-        });
-    };
 
     let children = create_memo(move |_| {
         state
@@ -80,16 +68,6 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     });
 
     let has_children = create_memo(move |_| !children.get().is_empty());
-
-    api::get_track_children::<B>(node.id, move |new_children| {
-        set_children(new_children);
-    });
-
-    api::subscribe_track::<B>(node.id, move |event| {
-        if let TrackEvent::ChildrenChanged { new_children } = event {
-            set_children(new_children);
-        }
-    });
 
     let on_drag = move |ev: &Event| {
         let Event::PointerDown(ev) = ev else {
@@ -238,7 +216,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     let child_views = dyn_stack(
         move || children.get(),
         move |v| *v,
-        move |node| tree_node::<B>(node, state),
+        move |node| tcp_tree_node::<B>(node, state),
     )
     .style(|s| s.flex_direction(FlexDirection::Column).padding_left(20.0));
 
@@ -295,9 +273,53 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         child_views,
         after_marker,
     ))
-    .debug_name("Track")
+    .debug_name("TcpTrackNode")
     .style(|s| s.position(Position::Relative))
     .on_event_stop(EventListener::PointerUp, on_drop)
+}
+
+fn tap_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
+    let tcp_view = track_arrangement_view::<B>(node.id).into_view();
+
+    let set_children = move |new_children: ImVec<TrackId>| {
+        state.children.update(move |children| {
+            let new_children = new_children
+                .into_iter()
+                .enumerate()
+                .map(|(index, id)| Node {
+                    id,
+                    parent: Some(node.id),
+                    index,
+                })
+                .collect();
+            children.insert(node, new_children);
+        });
+    };
+
+    let children = create_memo(move |_| {
+        state
+            .children
+            .with(|c| c.get(&node).cloned().unwrap_or_default())
+    });
+
+    api::get_track_children::<B>(node.id, move |new_children| {
+        set_children(new_children);
+    });
+
+    api::subscribe_track::<B>(node.id, move |event| {
+        if let TrackEvent::ChildrenChanged { new_children } = event {
+            set_children(new_children);
+        }
+    });
+
+    let child_views = dyn_stack(
+        move || children.get(),
+        move |v| *v,
+        move |node| tap_tree_node::<B>(node, state),
+    )
+    .style(|s| s.flex_direction(FlexDirection::Column));
+
+    v_stack((tcp_view, child_views))
 }
 
 fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
@@ -343,5 +365,14 @@ fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
         text_input(editor_name).placeholder("Name"),
         add_child_button,
     ))
-    .style(|s| s.padding(10).border(1).border_color(Color::BLACK))
+    .style(|s| {
+        s.height(60.0)
+            .padding(10)
+            .border(1)
+            .border_color(Color::BLACK)
+    })
+}
+
+fn track_arrangement_view<B: Backend>(_id: TrackId) -> impl IntoView {
+    label(move || "Arrangement view...").style(|s| s.height(60.0))
 }
