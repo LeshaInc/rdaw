@@ -1,6 +1,6 @@
 use floem::event::{Event, EventListener, EventPropagation};
 use floem::peniko::Color;
-use floem::reactive::{batch, create_effect, RwSignal};
+use floem::reactive::{batch, create_effect, create_memo, RwSignal};
 use floem::taffy::{Display, FlexDirection, Position};
 use floem::views::{dyn_stack, empty, h_stack, scroll, text_input, v_stack, Decorators};
 use floem::{IntoView, View};
@@ -27,7 +27,7 @@ enum DropLocation {
 
 #[derive(Clone, Copy)]
 struct State {
-    show_add: bool,
+    root: Node,
     selection: RwSignal<Option<Node>>,
     transitive_selection: RwSignal<HashSet<Node>>,
     is_dragging: RwSignal<bool>,
@@ -35,15 +35,15 @@ struct State {
     children: RwSignal<ImHashMap<Node, ImVec<Node>>>,
 }
 
-pub fn track_tree_view<B: Backend>(id: TrackId, show_add: bool) -> impl IntoView {
-    let node = Node {
+pub fn track_tree_view<B: Backend>(id: TrackId) -> impl IntoView {
+    let root = Node {
         id,
         parent: None,
         index: 0,
     };
 
     let state = State {
-        show_add,
+        root,
         selection: RwSignal::new(None),
         transitive_selection: RwSignal::new(HashSet::default()),
         is_dragging: RwSignal::new(false),
@@ -51,7 +51,7 @@ pub fn track_tree_view<B: Backend>(id: TrackId, show_add: bool) -> impl IntoView
         children: RwSignal::new(ImHashMap::default()),
     };
 
-    scroll(tree_node::<B>(node, state).style(|s| s.width_full()))
+    scroll(tree_node::<B>(root, state).style(|s| s.width_full()))
 }
 
 fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
@@ -73,6 +73,14 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         });
     };
 
+    let children = create_memo(move |_| {
+        state
+            .children
+            .with(|c| c.get(&node).cloned().unwrap_or_default())
+    });
+
+    let has_children = create_memo(move |_| !children.get().is_empty());
+
     api::get_track_children::<B>(node.id, move |new_children| {
         set_children(new_children);
     });
@@ -82,21 +90,6 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
             set_children(new_children);
         }
     });
-
-    let add_child = move |_ev: &Event| {
-        api::create_track::<B>(move |child_id| {
-            state.children.with_untracked(move |children| {
-                let index = children.get(&node).map(|v| v.len()).unwrap_or(0);
-                api::insert_track_child::<B>(node.id, child_id, index);
-            });
-        });
-    };
-
-    let has_children = move || {
-        state
-            .children
-            .with_untracked(|c| c.get(&node).is_some_and(|v| !v.is_empty()))
-    };
 
     let on_drag = move |ev: &Event| {
         let Event::PointerDown(ev) = ev else {
@@ -163,13 +156,15 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
             return EventPropagation::Stop;
         }
 
-        let location = if ev.pos.y < size.height * 0.5 {
+        let location = if node == state.root {
+            DropLocation::Inside(node)
+        } else if ev.pos.y < size.height * 0.5 {
             if sel_node.parent == node.parent && sel_node.index + 1 == node.index {
                 DropLocation::Forbidden
             } else {
                 DropLocation::Before(node)
             }
-        } else if ev.pos.x > size.width * 0.5 || !has_children() {
+        } else if ev.pos.x > size.width * 0.75 || has_children.get() {
             DropLocation::Inside(node)
         } else if sel_node.parent == node.parent && sel_node.index == node.index + 1 {
             DropLocation::Forbidden
@@ -240,12 +235,8 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         api::move_track::<B>(old_parent, old_index, new_parent, new_index);
     };
 
-    let add_child_button = button(ColorKind::Surface, Level::Mid, || "Add child")
-        .on_click_stop(add_child)
-        .style(move |s| s.width(100.0).apply_if(!state.show_add, |s| s.hide()));
-
     let child_views = dyn_stack(
-        move || state.children.get().get(&node).cloned().unwrap_or_default(),
+        move || children.get(),
         move |v| *v,
         move |node| tree_node::<B>(node, state),
     )
@@ -274,10 +265,10 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 DropLocation::Before { .. } => s.inset_top(-5.0),
                 DropLocation::After { .. } => s.inset_bottom(-5.0),
                 DropLocation::Inside { .. } => {
-                    if has_children() {
-                        s.inset_bottom(-5.0).inset_left_pct(25.0)
-                    } else {
+                    if has_children.get() {
                         s.inset_bottom(-5.0).inset_left(24.0)
+                    } else {
+                        s.inset_bottom(-5.0).inset_left_pct(25.0)
                     }
                 }
             }
@@ -300,11 +291,7 @@ fn tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
 
     v_stack((
         before_marker,
-        v_stack((
-            h_stack((tcp_view.style(|s| s.flex_grow(1.0)), add_child_button)),
-            inside_marker,
-        ))
-        .style(|s| s.position(Position::Relative)),
+        v_stack((tcp_view, inside_marker)).style(|s| s.position(Position::Relative)),
         child_views,
         after_marker,
     ))
@@ -342,6 +329,19 @@ fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
         editor_name.set(name.get());
     });
 
-    h_stack((text_input(editor_name).placeholder("Name"),))
-        .style(|s| s.padding(10).border(1).border_color(Color::BLACK))
+    let add_child = move |_ev: &Event| {
+        api::create_track::<B>(move |child_id| {
+            api::append_track_child::<B>(id, child_id);
+        });
+    };
+
+    let add_child_button = button(ColorKind::Surface, Level::Mid, || "Add child")
+        .on_click_stop(add_child)
+        .style(move |s| s.width(100.0));
+
+    h_stack((
+        text_input(editor_name).placeholder("Name"),
+        add_child_button,
+    ))
+    .style(|s| s.padding(10).border(1).border_color(Color::BLACK))
 }

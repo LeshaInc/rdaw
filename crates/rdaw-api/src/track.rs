@@ -23,6 +23,8 @@ pub trait TrackOperations {
 
     async fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>>;
 
+    async fn append_track_child(&self, parent: TrackId, child: TrackId) -> Result<()>;
+
     async fn insert_track_child(&self, parent: TrackId, child: TrackId, index: usize)
         -> Result<()>;
 

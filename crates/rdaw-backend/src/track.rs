@@ -39,6 +39,11 @@ crate::dispatch::define_dispatch_ops! {
         parent: TrackId
     ) -> Result<ImVec<TrackId>>;
 
+    AppendTrackChild => append_track_child(
+        parent: TrackId,
+        child: TrackId,
+    ) -> Result<()>;
+
     InsertTrackChild => insert_track_child(
         parent: TrackId,
         child: TrackId,
@@ -152,6 +157,21 @@ impl Backend {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
         let children = track.children().collect();
         Ok(children)
+    }
+
+    #[instrument(skip_all, err)]
+    async fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
+        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
+
+        // TODO: check for recursive relationships
+
+        track.append_child(child);
+
+        let new_children = track.children().collect();
+        let event = TrackEvent::ChildrenChanged { new_children };
+        self.track_subscribers.notify(parent, event).await;
+
+        Ok(())
     }
 
     #[instrument(skip_all, err)]

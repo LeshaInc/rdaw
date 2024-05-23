@@ -31,6 +31,10 @@ impl Track {
         self.children.iter().copied()
     }
 
+    pub fn append_child(&mut self, child: TrackId) {
+        self.children.push(child);
+    }
+
     pub fn insert_child(&mut self, child: TrackId, index: usize) {
         self.children.insert(index, child);
     }

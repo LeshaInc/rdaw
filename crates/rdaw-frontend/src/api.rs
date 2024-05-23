@@ -96,6 +96,8 @@ generate_methods! {
 
     fn get_track_children(parent: TrackId) -> ImVec<TrackId>;
 
+    fn append_track_child(parent: TrackId, child: TrackId);
+
     fn insert_track_child(
         parent: TrackId,
         child: TrackId,

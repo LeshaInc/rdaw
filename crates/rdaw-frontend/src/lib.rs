@@ -20,8 +20,8 @@ use track::track_tree_view;
 
 fn app_view<B: Backend>(master_track: TrackId) -> impl IntoView {
     h_stack((
-        track_tree_view::<B>(master_track, false).style(|s| s.flex_grow(1.0)),
-        track_tree_view::<B>(master_track, true).style(|s| s.flex_grow(1.0)),
+        track_tree_view::<B>(master_track).style(|s| s.flex_grow(1.0)),
+        track_tree_view::<B>(master_track).style(|s| s.flex_grow(1.0)),
     ))
     .style(|s| s.width_full())
 }
