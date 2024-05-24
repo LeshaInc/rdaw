@@ -19,7 +19,9 @@ use rdaw_ui_kit::Theme;
 use track::track_tree_view;
 
 fn app_view<B: Backend>(master_track: TrackId) -> impl IntoView {
-    track_tree_view::<B>(master_track).style(|s| s.width_full().height_full())
+    track_tree_view::<B>(master_track)
+        .style(|s| s.width_full().height_full())
+        .window_scale(move || 1.0)
 }
 
 pub fn spawn<T: Send + 'static>(

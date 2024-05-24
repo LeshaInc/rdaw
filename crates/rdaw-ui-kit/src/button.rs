@@ -26,7 +26,7 @@ fn add_style(color: ColorKind, level: Level, s: Style) -> Style {
         .border(1)
         .border_radius(4)
         .padding_horiz(10)
-        .padding_vert(4)
+        .padding_vert(1)
         .margin(3)
         .font_family(theme.fonts.normal.m.family.clone())
         .font_size(theme.fonts.normal.m.size)

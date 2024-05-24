@@ -1,11 +1,12 @@
 use floem::event::{Event, EventListener, EventPropagation};
 use floem::peniko::Color;
 use floem::reactive::{batch, create_effect, create_memo, RwSignal};
+use floem::style::CursorStyle;
 use floem::taffy::{Display, FlexDirection, Position};
 use floem::views::{dyn_stack, empty, h_stack, label, scroll, text_input, v_stack, Decorators};
 use floem::{IntoView, View};
 use rdaw_api::{Backend, TrackEvent, TrackId};
-use rdaw_core::collections::{HashSet, ImHashMap, ImVec};
+use rdaw_core::collections::{HashMap, HashSet, ImHashMap, ImVec};
 use rdaw_ui_kit::{button, ColorKind, Level};
 
 use crate::api;
@@ -33,6 +34,8 @@ struct State {
     is_dragging: RwSignal<bool>,
     drop_location: RwSignal<DropLocation>,
     children: RwSignal<ImHashMap<Node, ImVec<Node>>>,
+    min_track_height: f64,
+    track_heights: RwSignal<HashMap<Node, RwSignal<f64>>>,
 }
 
 pub fn track_tree_view<B: Backend>(id: TrackId) -> impl IntoView {
@@ -49,17 +52,46 @@ pub fn track_tree_view<B: Backend>(id: TrackId) -> impl IntoView {
         is_dragging: RwSignal::new(false),
         drop_location: RwSignal::new(DropLocation::Forbidden),
         children: RwSignal::new(ImHashMap::default()),
+        min_track_height: 50.0,
+        track_heights: RwSignal::new(HashMap::default()),
     };
 
-    scroll(h_stack((
-        tcp_tree_node::<B>(root, state).style(|s| s.width(400.0)),
-        tap_tree_node::<B>(root, state),
-    )))
+    scroll(
+        h_stack((
+            tcp_tree_node::<B>(root, state).style(|s| s.width(400.0)),
+            tap_tree_node::<B>(root, state, true).style(|s| s.flex_grow(1.0)),
+        ))
+        .style(|s| s.width_full()),
+    )
 }
 
 fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
+    let is_resizing = RwSignal::new(false);
+    let prev_resizing_y = RwSignal::new(None);
+
+    let track_height = create_memo(move |_| {
+        state.track_heights.with(|v| {
+            v.get(&node)
+                .map(|v| v.get())
+                .unwrap_or(state.min_track_height)
+        })
+    });
+
+    let set_track_height = move |new_height| {
+        if state.track_heights.with(|v| v.contains_key(&node)) {
+            state.track_heights.with(|v| v[&node].set(new_height));
+        } else {
+            state.track_heights.update(|v| {
+                v.insert(node, RwSignal::new(new_height));
+            });
+        }
+    };
+
     let tcp_view = track_control_panel::<B>(node.id).into_view();
     let tcp_view_id = tcp_view.id();
+
+    let track_resizer = empty();
+    let track_resizer_id = track_resizer.id();
 
     let children = create_memo(move |_| {
         state
@@ -69,7 +101,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
 
     let has_children = create_memo(move |_| !children.get().is_empty());
 
-    let on_drag = move |ev: &Event| {
+    let select = move |ev: &Event| {
         let Event::PointerDown(ev) = ev else {
             return EventPropagation::Continue;
         };
@@ -80,8 +112,6 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
 
         batch(move || {
             state.selection.set(Some(node));
-            state.drop_location.set(DropLocation::Forbidden);
-            state.is_dragging.set(true);
             state.transitive_selection.update(|selection| {
                 let children = state.children.get_untracked();
 
@@ -107,7 +137,64 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         EventPropagation::Stop
     };
 
-    let while_dragging = move |ev: &Event| {
+    let resize_start = move |ev: &Event| {
+        let Event::PointerMove(ev) = ev else {
+            return EventPropagation::Continue;
+        };
+
+        let Some(layout) = track_resizer_id.get_layout() else {
+            return EventPropagation::Continue;
+        };
+
+        batch(move || {
+            is_resizing.set(true);
+            prev_resizing_y.set(Some(layout.location.y as f64 + ev.pos.y));
+        });
+
+        EventPropagation::Stop
+    };
+
+    let resize_move = move |ev: &Event| {
+        let Event::PointerMove(ev) = ev else {
+            return EventPropagation::Continue;
+        };
+
+        if !is_resizing.get_untracked() {
+            return EventPropagation::Continue;
+        }
+
+        let Some(layout) = track_resizer_id.get_layout() else {
+            return EventPropagation::Continue;
+        };
+
+        let Some(prev_y) = prev_resizing_y.get_untracked() else {
+            return EventPropagation::Continue;
+        };
+
+        batch(move || {
+            let height = track_height.get_untracked();
+            let delta = ev.pos.y + layout.location.y as f64 - prev_y;
+            let new_height = (height + delta).max(state.min_track_height);
+            let actual_delta = new_height - height;
+            set_track_height(new_height);
+            prev_resizing_y.set(Some(prev_y + actual_delta));
+        });
+
+        EventPropagation::Stop
+    };
+
+    let resize_end = move |_: &Event| {
+        is_resizing.set(false);
+    };
+
+    let drag_start = move |_: &Event| {
+        batch(move || {
+            state.is_dragging.set(true);
+            state.drop_location.set(DropLocation::Forbidden);
+        });
+    };
+
+    let drag_over = move |ev: &Event| {
         let Event::PointerMove(ev) = ev else {
             return EventPropagation::Continue;
         };
@@ -142,7 +229,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
             } else {
                 DropLocation::Before(node)
             }
-        } else if ev.pos.x > size.width * 0.75 || has_children.get() {
+        } else if ev.pos.x > size.width - 25.0 || has_children.get() {
             DropLocation::Inside(node)
         } else if sel_node.parent == node.parent && sel_node.index == node.index + 1 {
             DropLocation::Forbidden
@@ -158,7 +245,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         EventPropagation::Stop
     };
 
-    let on_drop = move |ev: &Event| {
+    let drop_end = move |ev: &Event| {
         let Event::PointerUp(ev) = ev else {
             return;
         };
@@ -240,13 +327,13 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
 
             match location {
                 DropLocation::Forbidden => s,
-                DropLocation::Before { .. } => s.inset_top(-5.0),
-                DropLocation::After { .. } => s.inset_bottom(-5.0),
+                DropLocation::Before { .. } => s.inset_top(-5.5),
+                DropLocation::After { .. } => s.inset_bottom(-4.5),
                 DropLocation::Inside { .. } => {
                     if has_children.get() {
-                        s.inset_bottom(-5.0).inset_left(24.0)
+                        s.inset_bottom(-5.5).inset_left(24.0)
                     } else {
-                        s.inset_bottom(-5.0).inset_left_pct(25.0)
+                        s.inset_bottom(-5.5).inset_left_pct(25.0)
                     }
                 }
             }
@@ -257,29 +344,72 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     let inside_marker = marker(DropLocation::Inside(node));
     let after_marker = marker(DropLocation::After(node));
 
+    let track_selector = empty()
+        .style(move |s| {
+            s.position(Position::Absolute)
+                .inset_top(4.0)
+                .inset_bottom(5.0)
+                .width_full()
+                .z_index(10)
+        })
+        .draggable()
+        .on_event(EventListener::PointerDown, select)
+        .on_event_stop(EventListener::DragStart, drag_start)
+        .on_event_stop(EventListener::DragEnd, drop_end);
+
+    let track_resizer = track_resizer
+        .style(|s| {
+            s.position(Position::Absolute)
+                .inset_bottom(-5.0)
+                .width_full()
+                .height(10.0)
+                .z_index(10)
+                .cursor(CursorStyle::ColResize)
+        })
+        .draggable()
+        .on_event(EventListener::DragStart, resize_start)
+        .on_event(EventListener::PointerMove, resize_move)
+        .on_event_stop(EventListener::DragEnd, resize_end);
+
     let tcp_view = tcp_view
+        .style(move |s| s.height(track_height.get() - 1.0))
         .keyboard_navigatable()
         .style(move |s| {
             s.apply_if(state.selection.get() == Some(node), |s| {
                 s.background(Color::rgba8(255, 0, 0, 20))
             })
-        })
-        .on_event(EventListener::PointerDown, on_drag)
-        .on_event(EventListener::PointerMove, while_dragging);
+        });
 
     v_stack((
         before_marker,
-        v_stack((tcp_view, inside_marker)).style(|s| s.position(Position::Relative)),
+        v_stack((track_resizer, track_selector, tcp_view, inside_marker))
+            .style(|s| {
+                s.position(Position::Relative)
+                    .outline(1.0)
+                    .outline_color(Color::BLACK)
+                    .border_color(Color::BLACK)
+                    .margin_bottom(1.0)
+            })
+            .on_event(EventListener::DragOver, drag_over),
         child_views,
         after_marker,
     ))
     .debug_name("TcpTrackNode")
     .style(|s| s.position(Position::Relative))
-    .on_event_stop(EventListener::PointerUp, on_drop)
 }
 
-fn tap_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
-    let tcp_view = track_arrangement_view::<B>(node.id).into_view();
+fn tap_tree_node<B: Backend>(node: Node, state: State, is_even: bool) -> impl IntoView {
+    let track_height = create_memo(move |_| {
+        state.track_heights.with(|v| {
+            v.get(&node)
+                .map(|v| v.get())
+                .unwrap_or(state.min_track_height)
+        })
+    });
+
+    let tcp_view = track_arrangement_view::<B>(node.id, is_even)
+        .style(move |s| s.height(track_height.get()))
+        .into_view();
 
     let set_children = move |new_children: ImVec<TrackId>| {
         state.children.update(move |children| {
@@ -315,7 +445,7 @@ fn tap_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     let child_views = dyn_stack(
         move || children.get(),
         move |v| *v,
-        move |node| tap_tree_node::<B>(node, state),
+        move |node| tap_tree_node::<B>(node, state, !is_even),
     )
     .style(|s| s.flex_direction(FlexDirection::Column));
 
@@ -365,14 +495,12 @@ fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
         text_input(editor_name).placeholder("Name"),
         add_child_button,
     ))
-    .style(|s| {
-        s.height(60.0)
-            .padding(10)
-            .border(1)
-            .border_color(Color::BLACK)
-    })
+    .style(move |s| s.padding(10))
 }
 
-fn track_arrangement_view<B: Backend>(_id: TrackId) -> impl IntoView {
-    label(move || "Arrangement view...").style(|s| s.height(60.0))
+fn track_arrangement_view<B: Backend>(_id: TrackId, is_even: bool) -> impl IntoView {
+    label(move || "Arrangement view...").style(move |s| {
+        s.width_full()
+            .background(Color::BLACK.with_alpha_factor(if is_even { 0.05 } else { 0.1 }))
+    })
 }
