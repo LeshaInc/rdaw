@@ -1,4 +1,5 @@
 use rdaw_api::{ItemId, Time, TrackId, TrackItem, TrackItemId};
+use rdaw_core::collections::HashSet;
 use rdaw_core::time::RealTime;
 use rstar::{RTree, RTreeObject, AABB};
 use slotmap::SlotMap;
@@ -10,6 +11,7 @@ pub struct Track {
     pub name: String,
     uuid: Uuid,
     beat_map: BeatMap,
+    ancestors: HashSet<TrackId>,
     children: Vec<TrackId>,
     items: SlotMap<TrackItemId, TrackItem>,
     items_tree: RTree<TreeItem>,
@@ -21,14 +23,35 @@ impl Track {
             name,
             uuid: Uuid::new_v4(),
             beat_map,
+            ancestors: HashSet::default(),
             children: Vec::new(),
             items: SlotMap::default(),
             items_tree: RTree::new(),
         }
     }
 
+    pub fn ancestors(&self) -> impl ExactSizeIterator<Item = TrackId> + '_ {
+        self.ancestors.iter().copied()
+    }
+
+    pub fn contains_ancestor(&mut self, track: TrackId) -> bool {
+        self.ancestors.contains(&track)
+    }
+
+    pub fn add_ancestor(&mut self, track: TrackId) {
+        self.ancestors.insert(track);
+    }
+
+    pub fn remove_ancestor(&mut self, track: TrackId) {
+        self.ancestors.remove(&track);
+    }
+
     pub fn children(&self) -> impl ExactSizeIterator<Item = TrackId> + '_ {
         self.children.iter().copied()
+    }
+
+    pub fn get_child(&self, index: usize) -> Option<TrackId> {
+        self.children.get(index).copied()
     }
 
     pub fn append_child(&mut self, child: TrackId) {

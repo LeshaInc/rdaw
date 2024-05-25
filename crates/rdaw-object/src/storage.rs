@@ -37,6 +37,12 @@ impl<T: Object> Storage<T> {
         self.map.get_mut(id).map(|v| &mut v.object)
     }
 
+    pub fn get_disjoint_mut<const N: usize>(&mut self, ids: [T::Id; N]) -> Option<[&mut T; N]> {
+        self.map
+            .get_disjoint_mut(ids)
+            .map(|arr| arr.map(|v| &mut v.object))
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (T::Id, &T)> + '_ {
         self.map.iter().map(|(id, entry)| (id, &entry.object))
     }

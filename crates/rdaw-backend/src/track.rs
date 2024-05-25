@@ -159,41 +159,49 @@ impl Backend {
         Ok(children)
     }
 
-    #[instrument(skip_all, err)]
-    async fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
-        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
-
-        // TODO: check for recursive relationships
-
-        track.append_child(child);
-
+    async fn notify_track_child_change(&mut self, track_id: TrackId) {
+        let track = &self.hub.tracks[track_id];
         let new_children = track.children().collect();
         let event = TrackEvent::ChildrenChanged { new_children };
-        self.track_subscribers.notify(parent, event).await;
+        self.track_subscribers.notify(track_id, event).await;
+    }
 
-        Ok(())
+    #[instrument(skip_all, err)]
+    async fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
+        let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
+        let index = track.children().len();
+        self.insert_track_child(parent, child, index).await
     }
 
     #[instrument(skip_all, err)]
     async fn insert_track_child(
         &mut self,
-        parent: TrackId,
-        child: TrackId,
+        parent_id: TrackId,
+        child_id: TrackId,
         index: usize,
     ) -> Result<()> {
-        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
+        if parent_id == child_id {
+            return Err(Error::RecursiveTrack);
+        }
 
-        if index > track.children().len() {
+        let [parent, child] = self
+            .hub
+            .tracks
+            .get_disjoint_mut([parent_id, child_id])
+            .ok_or(Error::InvalidId)?;
+
+        if index > parent.children().len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        // TODO: check for recursive relationships
+        if parent.contains_ancestor(child_id) {
+            return Err(Error::RecursiveTrack);
+        }
 
-        track.insert_child(child, index);
+        parent.insert_child(child_id, index);
+        child.add_ancestor(parent_id);
 
-        let new_children = track.children().collect();
-        let event = TrackEvent::ChildrenChanged { new_children };
-        self.track_subscribers.notify(parent, event).await;
+        self.notify_track_child_change(parent_id).await;
 
         Ok(())
     }
@@ -206,53 +214,98 @@ impl Backend {
         new_parent: TrackId,
         new_index: usize,
     ) -> Result<()> {
-        let tracks = &mut self.hub.tracks;
-
-        if !tracks.contains_id(old_parent) || !tracks.contains_id(new_parent) {
-            return Err(Error::InvalidId);
+        if old_parent == new_parent {
+            self.move_track_in_parent(old_parent, old_index, new_index)
+                .await
+        } else {
+            self.move_track_between_parents(old_parent, old_index, new_parent, new_index)
+                .await
         }
+    }
 
-        if old_index >= tracks[old_parent].children().len() {
+    async fn move_track_in_parent(
+        &mut self,
+        parent_id: TrackId,
+        old_index: usize,
+        new_index: usize,
+    ) -> Result<()> {
+        let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
+
+        if old_index >= parent.children().len() || new_index >= parent.children().len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        if old_parent == new_parent {
-            tracks[old_parent].move_child(old_index, new_index);
-        } else {
-            if new_index > tracks[new_parent].children().len() {
-                return Err(Error::IndexOutOfBounds);
-            }
+        parent.move_child(old_index, new_index);
 
-            let id = tracks[old_parent].remove_child(old_index);
-            tracks[new_parent].insert_child(id, new_index);
+        self.notify_track_child_change(parent_id).await;
+
+        Ok(())
+    }
+
+    async fn move_track_between_parents(
+        &mut self,
+        old_parent_id: TrackId,
+        old_index: usize,
+        new_parent_id: TrackId,
+        new_index: usize,
+    ) -> Result<()> {
+        let child_id = self
+            .hub
+            .tracks
+            .get(old_parent_id)
+            .ok_or(Error::IndexOutOfBounds)?
+            .get_child(old_index)
+            .ok_or(Error::IndexOutOfBounds)?;
+
+        if child_id == old_parent_id || child_id == new_parent_id {
+            return Err(Error::RecursiveTrack);
         }
 
-        let new_children = tracks[old_parent].children().collect();
-        let event = TrackEvent::ChildrenChanged { new_children };
-        self.track_subscribers.notify(old_parent, event).await;
+        let [old_parent, new_parent, child] = self
+            .hub
+            .tracks
+            .get_disjoint_mut([old_parent_id, new_parent_id, child_id])
+            .ok_or(Error::InvalidId)?;
 
-        if old_parent != new_parent {
-            let new_children = tracks[new_parent].children().collect();
-            let event = TrackEvent::ChildrenChanged { new_children };
-            self.track_subscribers.notify(new_parent, event).await;
+        if new_index > new_parent.children().len() {
+            return Err(Error::IndexOutOfBounds);
         }
+
+        if new_parent.contains_ancestor(child_id) {
+            return Err(Error::RecursiveTrack);
+        }
+
+        let child_id = old_parent.remove_child(old_index);
+
+        if !old_parent.children().any(|v| v == child_id) {
+            child.remove_ancestor(old_parent_id);
+        }
+
+        new_parent.insert_child(child_id, new_index);
+        child.add_ancestor(new_parent_id);
+
+        self.notify_track_child_change(old_parent_id).await;
+        self.notify_track_child_change(new_parent_id).await;
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn remove_track_child(&mut self, parent: TrackId, index: usize) -> Result<()> {
-        let track = self.hub.tracks.get_mut(parent).ok_or(Error::InvalidId)?;
+    pub async fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
+        let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
-        if index >= track.children().len() {
+        if index >= parent.children().len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        track.remove_child(index);
+        let child_id = parent.remove_child(index);
 
-        let new_children = track.children().collect();
-        let event = TrackEvent::ChildrenChanged { new_children };
-        self.track_subscribers.notify(parent, event).await;
+        if !parent.children().any(|v| v == child_id) {
+            let child = self.hub.tracks.get_mut(child_id).ok_or(Error::InvalidId)?;
+            child.remove_ancestor(parent_id);
+        }
+
+        self.notify_track_child_change(parent_id).await;
 
         Ok(())
     }
