@@ -29,7 +29,7 @@ crate::dispatch::define_dispatch_ops! {
 
 impl Backend {
     #[instrument(skip_all, err)]
-    pub async fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId> {
+    pub fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId> {
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);
 
@@ -40,7 +40,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub async fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId> {
+    pub fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId> {
         let data = std::fs::read(&path).map_err(|error| Error::Filesystem {
             error,
             path: path.clone(),

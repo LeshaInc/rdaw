@@ -20,11 +20,11 @@ macro_rules! define_dispatch_ops {
         }
 
         impl $TypeName {
-            pub async fn $fn_name(&mut self, op: $EnumName) {
+            pub fn $fn_name(&mut self, op: $EnumName) {
                 match op {
                     $(
                         $EnumName::$Name { $($arg,)* sender } => {
-                            let res = self.$method($($arg),*).await;
+                            let res = self.$method($($arg),*);
                             let _ = sender.send(res);
                         }
                     ),*

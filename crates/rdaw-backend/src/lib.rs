@@ -38,15 +38,15 @@ impl Backend {
         }
     }
 
-    pub async fn dispatch(&mut self, operation: Operation) {
+    pub fn dispatch(&mut self, operation: Operation) {
         match operation {
-            Operation::Track(op) => self.dispatch_track_operation(op).await,
-            Operation::Blob(op) => self.dispatch_blob_operation(op).await,
+            Operation::Track(op) => self.dispatch_track_operation(op),
+            Operation::Blob(op) => self.dispatch_blob_operation(op),
         }
     }
 
-    pub fn cleanup(&mut self) {
-        self.track_subscribers.cleanup();
+    pub async fn update(&mut self) {
+        self.track_subscribers.update().await;
     }
 
     pub async fn run(mut self) {
@@ -55,7 +55,8 @@ impl Backend {
                 break;
             };
 
-            self.dispatch(op).await;
+            self.dispatch(op);
+            self.update().await;
         }
     }
 }

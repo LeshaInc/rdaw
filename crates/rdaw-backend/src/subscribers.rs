@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::hash::Hash;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -10,7 +11,13 @@ const CAPACITY: usize = 8;
 
 #[derive(Debug)]
 pub struct Subscribers<K, E> {
-    map: HashMap<K, Vec<Sender<E>>>,
+    map: HashMap<K, Entry<E>>,
+}
+
+#[derive(Debug)]
+struct Entry<E> {
+    senders: Vec<Sender<E>>,
+    queue: VecDeque<E>,
 }
 
 impl<K, E> Subscribers<K, E> {
@@ -24,34 +31,51 @@ impl<K, E> Subscribers<K, E> {
 impl<K: Copy + Eq + Hash, E: Clone> Subscribers<K, E> {
     pub fn subscribe(&mut self, key: K) -> Subscriber<E> {
         let (sender, receiver) = spsc::channel(CAPACITY);
-        self.map.entry(key).or_default().push(sender);
+
+        let entry = self.map.entry(key).or_insert_with(|| Entry {
+            senders: Vec::new(),
+            queue: VecDeque::new(),
+        });
+
+        entry.senders.push(sender);
+
         Subscriber { receiver }
     }
 
-    pub async fn notify(&mut self, key: K, event: E) {
-        let Some(senders) = self.map.get_mut(&key) else {
+    pub fn notify(&mut self, key: K, event: E) {
+        let Some(entry) = self.map.get_mut(&key) else {
             return;
         };
 
-        let mut i = 0;
-        while i < senders.len() {
-            if i == senders.len() - 1 {
-                if senders[i].send_async(event).await.is_err() {
-                    senders.remove(i);
-                }
-                break;
-            } else if senders[i].send_async(event.clone()).await.is_err() {
-                senders.remove(i);
-            } else {
-                i += 1;
-            }
+        if entry.senders.is_empty() {
+            return;
         }
+
+        entry.queue.push_back(event);
     }
 
-    pub fn cleanup(&mut self) {
-        self.map.retain(|_, vec| {
-            vec.retain(|sender| !sender.is_closed());
-            !vec.is_empty()
+    pub async fn update(&mut self) {
+        for entry in self.map.values_mut() {
+            if entry.senders.is_empty() {
+                entry.queue.clear();
+                continue;
+            }
+
+            let last_idx = entry.senders.len() - 1;
+
+            for event in entry.queue.drain(..) {
+                for sender in &mut entry.senders[..last_idx] {
+                    let _ = sender.send_async(event.clone()).await;
+                }
+
+                let last_sender = &mut entry.senders[last_idx];
+                let _ = last_sender.send_async(event.clone()).await;
+            }
+        }
+
+        self.map.retain(|_, entry| {
+            entry.senders.retain(|sender| !sender.is_closed());
+            !entry.senders.is_empty()
         });
     }
 }

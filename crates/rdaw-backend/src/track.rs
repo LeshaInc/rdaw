@@ -100,13 +100,13 @@ crate::dispatch::define_dispatch_ops! {
 
 impl Backend {
     #[instrument(skip_all, err)]
-    pub async fn list_tracks(&self) -> Result<Vec<TrackId>> {
+    pub fn list_tracks(&self) -> Result<Vec<TrackId>> {
         let tracks = self.hub.tracks.iter().map(|(id, _)| id).collect();
         Ok(tracks)
     }
 
     #[instrument(skip_all, err)]
-    pub async fn create_track(&mut self) -> Result<TrackId> {
+    pub fn create_track(&mut self) -> Result<TrackId> {
         // TODO: remove this
         let beat_map = BeatMap {
             beats_per_minute: 120.0,
@@ -127,7 +127,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub async fn subscribe_track(&mut self, id: TrackId) -> Result<BoxStream<TrackEvent>> {
+    pub fn subscribe_track(&mut self, id: TrackId) -> Result<BoxStream<TrackEvent>> {
         if !self.hub.tracks.contains_id(id) {
             return Err(Error::InvalidId);
         }
@@ -136,45 +136,45 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub async fn get_track_name(&self, id: TrackId) -> Result<String> {
+    pub fn get_track_name(&self, id: TrackId) -> Result<String> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         Ok(track.name.clone())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
+    pub fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
         track.name.clone_from(&new_name);
 
         let event = TrackEvent::NameChanged { new_name };
-        self.track_subscribers.notify(id, event).await;
+        self.track_subscribers.notify(id, event);
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    async fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>> {
+    fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
         let children = track.children().collect();
         Ok(children)
     }
 
-    async fn notify_track_child_change(&mut self, track_id: TrackId) {
+    fn notify_track_child_change(&mut self, track_id: TrackId) {
         let track = &self.hub.tracks[track_id];
         let new_children = track.children().collect();
         let event = TrackEvent::ChildrenChanged { new_children };
-        self.track_subscribers.notify(track_id, event).await;
+        self.track_subscribers.notify(track_id, event);
     }
 
     #[instrument(skip_all, err)]
-    async fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
+    fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
         let index = track.children().len();
-        self.insert_track_child(parent, child, index).await
+        self.insert_track_child(parent, child, index)
     }
 
     #[instrument(skip_all, err)]
-    async fn insert_track_child(
+    fn insert_track_child(
         &mut self,
         parent_id: TrackId,
         child_id: TrackId,
@@ -201,13 +201,13 @@ impl Backend {
         parent.insert_child(child_id, index);
         child.add_ancestor(parent_id);
 
-        self.notify_track_child_change(parent_id).await;
+        self.notify_track_child_change(parent_id);
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn move_track(
+    pub fn move_track(
         &mut self,
         old_parent: TrackId,
         old_index: usize,
@@ -216,14 +216,12 @@ impl Backend {
     ) -> Result<()> {
         if old_parent == new_parent {
             self.move_track_in_parent(old_parent, old_index, new_index)
-                .await
         } else {
             self.move_track_between_parents(old_parent, old_index, new_parent, new_index)
-                .await
         }
     }
 
-    async fn move_track_in_parent(
+    fn move_track_in_parent(
         &mut self,
         parent_id: TrackId,
         old_index: usize,
@@ -237,12 +235,12 @@ impl Backend {
 
         parent.move_child(old_index, new_index);
 
-        self.notify_track_child_change(parent_id).await;
+        self.notify_track_child_change(parent_id);
 
         Ok(())
     }
 
-    async fn move_track_between_parents(
+    fn move_track_between_parents(
         &mut self,
         old_parent_id: TrackId,
         old_index: usize,
@@ -284,14 +282,14 @@ impl Backend {
         new_parent.insert_child(child_id, new_index);
         child.add_ancestor(new_parent_id);
 
-        self.notify_track_child_change(old_parent_id).await;
-        self.notify_track_child_change(new_parent_id).await;
+        self.notify_track_child_change(old_parent_id);
+        self.notify_track_child_change(new_parent_id);
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
+    pub fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
         if index >= parent.children().len() {
@@ -305,13 +303,13 @@ impl Backend {
             child.remove_ancestor(parent_id);
         }
 
-        self.notify_track_child_change(parent_id).await;
+        self.notify_track_child_change(parent_id);
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn get_track_range(
+    pub fn get_track_range(
         &self,
         id: TrackId,
         start: Option<Time>,
@@ -323,7 +321,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub async fn add_track_item(
+    pub fn add_track_item(
         &mut self,
         id: TrackId,
         item_id: ItemId,
@@ -339,31 +337,31 @@ impl Backend {
             start: item.real_start,
             end: item.real_end,
         };
-        self.track_subscribers.notify(id, event).await;
+        self.track_subscribers.notify(id, event);
 
         Ok(item_id)
     }
 
     #[instrument(skip_all, err)]
-    pub async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
+    pub fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         let item = track.get(item_id).ok_or(Error::InvalidId)?;
         Ok(item.clone())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
+    pub fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
         track.remove(item_id);
 
         let event = TrackEvent::ItemRemoved { id: item_id };
-        self.track_subscribers.notify(id, event).await;
+        self.track_subscribers.notify(id, event);
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn move_track_item(
+    pub fn move_track_item(
         &mut self,
         id: TrackId,
         item_id: TrackItemId,
@@ -377,13 +375,13 @@ impl Backend {
             id: item_id,
             new_start: item.real_start,
         };
-        self.track_subscribers.notify(id, event).await;
+        self.track_subscribers.notify(id, event);
 
         Ok(())
     }
 
     #[instrument(skip_all, err)]
-    pub async fn resize_track_item(
+    pub fn resize_track_item(
         &mut self,
         id: TrackId,
         item_id: TrackItemId,
@@ -399,7 +397,7 @@ impl Backend {
             id: item_id,
             new_duration,
         };
-        self.track_subscribers.notify(id, event).await;
+        self.track_subscribers.notify(id, event);
 
         Ok(())
     }
