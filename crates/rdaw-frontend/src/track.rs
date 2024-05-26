@@ -70,7 +70,7 @@ pub fn track_tree_view<B: Backend>(root: TrackId) -> impl IntoView {
     let get_height = move |node: &TrackNode| {
         state.track_heights.with(|heights| {
             heights
-                .get(&node)
+                .get(node)
                 .map(|signal| signal.get())
                 .unwrap_or(state.min_track_height)
         })

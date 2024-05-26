@@ -188,7 +188,7 @@ impl Backend {
 
         while let Some(id) = stack.pop() {
             let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
-            let children = track.children.iter().copied().collect::<Vec<_>>();
+            let children = track.children.to_vec();
             stack.extend(children.iter().copied());
             hierarchy.set_children(id, children);
         }
