@@ -26,7 +26,7 @@ pub trait TrackOperations {
 
     async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
 
-    async fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>>;
+    async fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>>;
 
     async fn get_track_hierarchy(&self, root: TrackId) -> Result<TrackHierarchy>;
 

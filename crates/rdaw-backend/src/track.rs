@@ -2,7 +2,6 @@ use rdaw_api::{
     BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackHierarchy, TrackHierarchyEvent,
     TrackId, TrackItem, TrackItemId, TrackOperations,
 };
-use rdaw_core::collections::ImVec;
 use rdaw_object::{BeatMap, Track};
 use slotmap::Key;
 use tracing::instrument;
@@ -41,7 +40,7 @@ crate::dispatch::define_dispatch_ops! {
 
     GetTrackChildren => get_track_children(
         parent: TrackId
-    ) -> Result<ImVec<TrackId>>;
+    ) -> Result<Vec<TrackId>>;
 
     GetTrackHierarchy => get_track_hierarchy(
         root: TrackId
@@ -173,10 +172,9 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>> {
+    pub fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
-        let children = track.children.iter().copied().collect();
-        Ok(children)
+        Ok(track.children.clone())
     }
 
     #[instrument(skip_all, err)]

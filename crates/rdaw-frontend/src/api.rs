@@ -6,7 +6,6 @@ use rdaw_api::{
     Backend, BlobId, Error, ItemId, Time, TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId,
     TrackItem, TrackItemId,
 };
-use rdaw_core::collections::ImVec;
 
 use crate::{spawn, stream_for_each};
 
@@ -100,7 +99,7 @@ generate_methods! {
 
     fn set_track_name(id: TrackId, name: String);
 
-    fn get_track_children(parent: TrackId) -> ImVec<TrackId>;
+    fn get_track_children(parent: TrackId) -> Vec<TrackId>;
 
     fn get_track_hierarchy(root: TrackId) -> TrackHierarchy;
 
