@@ -1,18 +1,18 @@
 use floem::event::{Event, EventListener, EventPropagation};
 use floem::peniko::Color;
-use floem::reactive::{batch, create_effect, create_memo, RwSignal};
+use floem::reactive::{batch, create_memo, RwSignal};
 use floem::style::CursorStyle;
 use floem::taffy::{Display, Position};
 use floem::views::{
-    empty, h_stack, label, scroll, text_input, v_stack, virtual_stack, Decorators,
-    VirtualDirection, VirtualItemSize, VirtualVector,
+    container, empty, h_stack, scroll, v_stack, virtual_stack, Decorators, VirtualDirection,
+    VirtualItemSize, VirtualVector,
 };
 use floem::{IntoView, View};
-use rdaw_api::{Backend, TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
+use rdaw_api::{Backend, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
 use rdaw_core::collections::{HashMap, HashSet, ImVec};
-use rdaw_ui_kit::{button, ColorKind, Level};
 
 use crate::api;
+use crate::views::{track_arrangement, track_control};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum DropLocation {
@@ -33,7 +33,7 @@ struct State {
     track_heights: RwSignal<HashMap<TrackNode, RwSignal<f64>>>,
 }
 
-pub fn track_tree_view<B: Backend>(root: TrackId) -> impl IntoView {
+pub fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
     let state = State {
         selection: RwSignal::new(None),
         transitive_selection: RwSignal::new(HashSet::default()),
@@ -76,32 +76,33 @@ pub fn track_tree_view<B: Backend>(root: TrackId) -> impl IntoView {
         })
     };
 
-    let tcp_tree = virtual_stack(
+    let control_tree = virtual_stack(
         VirtualDirection::Vertical,
         VirtualItemSize::Fn(Box::new(get_height)),
         move || order.get(),
         move |node| *node,
-        move |node| tcp_tree_node::<B>(state, node),
+        move |node| control_node::<B>(state, node),
     );
 
-    let tav_tree = virtual_stack(
+    let arrangement_tree = virtual_stack(
         VirtualDirection::Vertical,
         VirtualItemSize::Fn(Box::new(move |(_, node)| get_height(node))),
         move || order.get().enumerate(),
         move |(idx, node)| (*node, idx % 2 == 0),
-        move |(idx, node)| tav_tree_node::<B>(state, node, idx % 2 == 0),
+        move |(idx, node)| arrangement_node::<B>(state, node, idx % 2 == 0),
     );
 
     scroll(
         h_stack((
-            tcp_tree.style(|s| s.width(400.0)),
-            tav_tree.style(|s| s.flex_grow(1.0)),
+            control_tree.style(|s| s.width(400.0)),
+            arrangement_tree.style(|s| s.flex_grow(1.0)),
         ))
         .style(|s| s.width_full()),
     )
+    .debug_name("TrackTree")
 }
 
-fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
+fn control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
     let is_resizing = RwSignal::new(false);
     let prev_resizing_y = RwSignal::new(None);
 
@@ -123,8 +124,8 @@ fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
         }
     };
 
-    let tcp_view = track_control_panel::<B>(node.id).into_view();
-    let tcp_view_id = tcp_view.id();
+    let control_view = track_control::<B>(node.id).into_view();
+    let control_view_id = control_view.id();
 
     let track_resizer = empty();
     let track_resizer_id = track_resizer.id();
@@ -230,7 +231,7 @@ fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
             return EventPropagation::Continue;
         };
 
-        let Some(size) = tcp_view_id.get_size() else {
+        let Some(size) = control_view_id.get_size() else {
             return EventPropagation::Continue;
         };
 
@@ -387,7 +388,7 @@ fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
         .on_event(EventListener::PointerMove, resize_move)
         .on_event_stop(EventListener::DragEnd, resize_end);
 
-    let tcp_view = tcp_view
+    let control_view = control_view
         .style(move |s| s.height(track_height.get() - 1.0))
         .keyboard_navigatable()
         .style(move |s| {
@@ -398,7 +399,7 @@ fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
 
     v_stack((
         before_marker,
-        v_stack((track_resizer, track_selector, tcp_view, inside_marker))
+        v_stack((track_resizer, track_selector, control_view, inside_marker))
             .style(|s| {
                 s.position(Position::Relative)
                     .outline(1.0)
@@ -409,14 +410,14 @@ fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
             .on_event(EventListener::DragOver, drag_over),
         after_marker,
     ))
-    .debug_name("TcpTrackNode")
+    .debug_name("TrackControlNode")
     .style(move |s| {
         s.margin_left(20.0 * (node.level as f32))
             .position(Position::Relative)
     })
 }
 
-fn tav_tree_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
+fn arrangement_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
     let track_height = create_memo(move |_| {
         state.track_heights.with(|v| {
             v.get(&node)
@@ -425,59 +426,7 @@ fn tav_tree_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> im
         })
     });
 
-    track_arrangement_view::<B>(node.id, is_even)
+    container(track_arrangement::<B>(node.id, is_even))
+        .debug_name("TrackArrangementNode")
         .style(move |s| s.width_full().height(track_height.get()))
-}
-
-fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
-    let name = RwSignal::new(String::new());
-    let editor_name = RwSignal::new(String::new());
-
-    api::get_track_name::<B>(id, move |new_name| name.set(new_name));
-
-    api::subscribe_track::<B>(id, move |event| {
-        if let TrackEvent::NameChanged { new_name } = event {
-            name.set(new_name)
-        }
-    });
-
-    create_effect(move |old| {
-        let editor_name = editor_name.get();
-        let name = name.get();
-
-        if old.is_none() || old.is_some_and(|v| v == editor_name) || editor_name == name {
-            return editor_name;
-        };
-
-        api::set_track_name::<B>(id, editor_name.clone());
-
-        editor_name
-    });
-
-    create_effect(move |_| {
-        editor_name.set(name.get());
-    });
-
-    let add_child = move |_ev: &Event| {
-        api::create_track::<B>(move |child_id| {
-            api::append_track_child::<B>(id, child_id);
-        });
-    };
-
-    let add_child_button = button(ColorKind::Surface, Level::Mid, || "Add child")
-        .on_click_stop(add_child)
-        .style(move |s| s.width(100.0));
-
-    h_stack((
-        text_input(editor_name).placeholder("Name"),
-        add_child_button,
-    ))
-    .style(move |s| s.padding(10))
-}
-
-fn track_arrangement_view<B: Backend>(_id: TrackId, is_even: bool) -> impl IntoView {
-    label(move || "Arrangement view...").style(move |s| {
-        s.width_full()
-            .background(Color::BLACK.with_alpha_factor(if is_even { 0.03 } else { 0.1 }))
-    })
 }

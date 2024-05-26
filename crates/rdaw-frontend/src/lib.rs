@@ -1,5 +1,5 @@
 pub mod api;
-mod track;
+pub mod views;
 
 use std::collections::VecDeque;
 use std::future::Future;
@@ -15,10 +15,9 @@ use futures_lite::future::block_on;
 use futures_lite::StreamExt;
 use rdaw_api::{Backend, BoxStream, TrackId};
 use rdaw_ui_kit::Theme;
-use track::track_tree_view;
 
-fn app_view<B: Backend>(master_track: TrackId) -> impl IntoView {
-    track_tree_view::<B>(master_track)
+pub fn app_view<B: Backend>(master_track: TrackId) -> impl IntoView {
+    views::track_tree::<B>(master_track)
         .style(|s| s.width_full().height_full())
         .window_scale(move || 1.0)
 }
