@@ -364,7 +364,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 .width_full()
                 .height(10.0)
                 .z_index(10)
-                .cursor(CursorStyle::ColResize)
+                .cursor(CursorStyle::RowResize)
         })
         .draggable()
         .on_event(EventListener::DragStart, resize_start)
