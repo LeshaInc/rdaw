@@ -1,6 +1,6 @@
 use rdaw_api::{
-    BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackHierarchyEvent, TrackId, TrackItem,
-    TrackItemId, TrackOperations,
+    BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackHierarchy, TrackHierarchyEvent,
+    TrackId, TrackItem, TrackItemId, TrackOperations,
 };
 use rdaw_core::collections::ImVec;
 use rdaw_object::{BeatMap, Track};
@@ -42,6 +42,10 @@ crate::dispatch::define_dispatch_ops! {
     GetTrackChildren => get_track_children(
         parent: TrackId
     ) -> Result<ImVec<TrackId>>;
+
+    GetTrackHierarchy => get_track_hierarchy(
+        root: TrackId
+    ) -> Result<TrackHierarchy>;
 
     AppendTrackChild => append_track_child(
         parent: TrackId,
@@ -169,19 +173,36 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>> {
+    pub fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
-        let children = track.children().collect();
+        let children = track.children.iter().copied().collect();
         Ok(children)
+    }
+
+    #[instrument(skip_all, err)]
+    pub fn get_track_hierarchy(&self, root: TrackId) -> Result<TrackHierarchy> {
+        let mut hierarchy = TrackHierarchy::new(root);
+
+        let mut stack = Vec::new();
+        stack.push(root);
+
+        while let Some(id) = stack.pop() {
+            let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+            let children = track.children.iter().copied().collect::<Vec<_>>();
+            stack.extend(children.iter().copied());
+            hierarchy.set_children(id, children);
+        }
+
+        Ok(hierarchy)
     }
 
     fn notify_track_child_change(&mut self, id: TrackId) {
         let track = &self.hub.tracks[id];
-        let new_children = track.children().collect();
+        let new_children = track.children.iter().copied().collect();
 
         let event = TrackHierarchyEvent::ChildrenChanged { id, new_children };
 
-        for ancestor in track.ancestors() {
+        for &ancestor in &track.ancestors {
             self.track_hierarchy_subscribers
                 .notify(ancestor, event.clone());
         }
@@ -189,15 +210,54 @@ impl Backend {
         self.track_hierarchy_subscribers.notify(id, event);
     }
 
+    fn add_track_ancestor(&mut self, track_id: TrackId, ancestor_id: TrackId) {
+        let Some([track, ancestor]) = self.hub.tracks.get_disjoint_mut([track_id, ancestor_id])
+        else {
+            return;
+        };
+
+        track.direct_ancestors.insert(ancestor_id);
+        track.ancestors.insert(ancestor_id);
+
+        for &transitive_ancestor_id in &ancestor.ancestors {
+            track.ancestors.insert(transitive_ancestor_id);
+        }
+    }
+
+    fn remove_track_ancestor(&mut self, track_id: TrackId, ancestor_id: TrackId) {
+        let Some(track) = self.hub.tracks.get_mut(track_id) else {
+            return;
+        };
+
+        track.direct_ancestors.remove(&ancestor_id);
+
+        let mut new_ancestors = std::mem::take(&mut track.ancestors);
+        new_ancestors.clear();
+
+        for &ancestor_id in &self.hub.tracks[track_id].direct_ancestors {
+            new_ancestors.insert(ancestor_id);
+
+            let Some(ancestor) = self.hub.tracks.get(ancestor_id) else {
+                continue;
+            };
+
+            for &transitive_ancestor in &ancestor.ancestors {
+                new_ancestors.insert(transitive_ancestor);
+            }
+        }
+
+        self.hub.tracks[track_id].ancestors = new_ancestors;
+    }
+
     #[instrument(skip_all, err)]
-    fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
+    pub fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
-        let index = track.children().len();
+        let index = track.children.len();
         self.insert_track_child(parent, child, index)
     }
 
     #[instrument(skip_all, err)]
-    fn insert_track_child(
+    pub fn insert_track_child(
         &mut self,
         parent_id: TrackId,
         child_id: TrackId,
@@ -207,23 +267,22 @@ impl Backend {
             return Err(Error::RecursiveTrack);
         }
 
-        let [parent, child] = self
-            .hub
-            .tracks
-            .get_disjoint_mut([parent_id, child_id])
-            .ok_or(Error::InvalidId)?;
+        if !self.hub.tracks.contains_id(child_id) {
+            return Err(Error::InvalidId);
+        }
 
-        if index > parent.children().len() {
+        let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
+
+        if index > parent.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        if parent.contains_ancestor(child_id) {
+        if parent.ancestors.contains(&child_id) {
             return Err(Error::RecursiveTrack);
         }
 
-        parent.insert_child(child_id, index);
-        child.add_ancestor(parent_id);
-
+        parent.children.insert(index, child_id);
+        self.add_track_ancestor(child_id, parent_id);
         self.notify_track_child_change(parent_id);
 
         Ok(())
@@ -252,11 +311,12 @@ impl Backend {
     ) -> Result<()> {
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
-        if old_index >= parent.children().len() || new_index >= parent.children().len() {
+        if old_index >= parent.children.len() || new_index >= parent.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        parent.move_child(old_index, new_index);
+        let child_id = parent.children.remove(old_index);
+        parent.children.insert(new_index, child_id);
 
         self.notify_track_child_change(parent_id);
 
@@ -270,41 +330,40 @@ impl Backend {
         new_parent_id: TrackId,
         new_index: usize,
     ) -> Result<()> {
-        let child_id = self
-            .hub
-            .tracks
-            .get(old_parent_id)
-            .ok_or(Error::IndexOutOfBounds)?
-            .get_child(old_index)
+        let old_parent = self.hub.tracks.get(old_parent_id).ok_or(Error::InvalidId)?;
+        let &child_id = old_parent
+            .children
+            .get(old_index)
             .ok_or(Error::IndexOutOfBounds)?;
 
         if child_id == old_parent_id || child_id == new_parent_id {
             return Err(Error::RecursiveTrack);
         }
 
-        let [old_parent, new_parent, child] = self
+        let [old_parent, new_parent] = self
             .hub
             .tracks
-            .get_disjoint_mut([old_parent_id, new_parent_id, child_id])
+            .get_disjoint_mut([old_parent_id, new_parent_id])
             .ok_or(Error::InvalidId)?;
 
-        if new_index > new_parent.children().len() {
+        if new_index > new_parent.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        if new_parent.contains_ancestor(child_id) {
+        if new_parent.ancestors.contains(&child_id) {
+            tracing::error!("HERE");
             return Err(Error::RecursiveTrack);
         }
 
-        let child_id = old_parent.remove_child(old_index);
+        let child_id = old_parent.children.remove(old_index);
 
-        if !old_parent.children().any(|v| v == child_id) {
-            child.remove_ancestor(old_parent_id);
+        new_parent.children.insert(new_index, child_id);
+
+        if !old_parent.children.contains(&child_id) {
+            self.remove_track_ancestor(child_id, old_parent_id);
         }
 
-        new_parent.insert_child(child_id, new_index);
-        child.add_ancestor(new_parent_id);
-
+        self.add_track_ancestor(child_id, new_parent_id);
         self.notify_track_child_change(old_parent_id);
         self.notify_track_child_change(new_parent_id);
 
@@ -315,15 +374,14 @@ impl Backend {
     pub fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
-        if index >= parent.children().len() {
+        if index >= parent.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        let child_id = parent.remove_child(index);
+        let child_id = parent.children.remove(index);
 
-        if !parent.children().any(|v| v == child_id) {
-            let child = self.hub.tracks.get_mut(child_id).ok_or(Error::InvalidId)?;
-            child.remove_ancestor(parent_id);
+        if !parent.children.contains(&child_id) {
+            self.remove_track_ancestor(child_id, parent_id);
         }
 
         self.notify_track_child_change(parent_id);

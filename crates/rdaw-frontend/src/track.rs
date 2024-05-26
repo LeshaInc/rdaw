@@ -2,70 +2,106 @@ use floem::event::{Event, EventListener, EventPropagation};
 use floem::peniko::Color;
 use floem::reactive::{batch, create_effect, create_memo, RwSignal};
 use floem::style::CursorStyle;
-use floem::taffy::{Display, FlexDirection, Position};
-use floem::views::{dyn_stack, empty, h_stack, label, scroll, text_input, v_stack, Decorators};
+use floem::taffy::{Display, Position};
+use floem::views::{
+    empty, h_stack, label, scroll, text_input, v_stack, virtual_stack, Decorators,
+    VirtualDirection, VirtualItemSize, VirtualVector,
+};
 use floem::{IntoView, View};
-use rdaw_api::{Backend, TrackEvent, TrackHierarchyEvent, TrackId};
-use rdaw_core::collections::{HashMap, HashSet, ImHashMap, ImVec};
+use rdaw_api::{Backend, TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
+use rdaw_core::collections::{HashMap, HashSet, ImVec};
 use rdaw_ui_kit::{button, ColorKind, Level};
 
 use crate::api;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-struct Node {
-    id: TrackId,
-    parent: Option<TrackId>,
-    index: usize,
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum DropLocation {
     Forbidden,
-    Before(Node),
-    After(Node),
-    Inside(Node),
+    Before(TrackNode),
+    After(TrackNode),
+    Inside(TrackNode),
 }
 
 #[derive(Clone, Copy)]
 struct State {
-    root: Node,
-    selection: RwSignal<Option<Node>>,
-    transitive_selection: RwSignal<HashSet<Node>>,
+    hierarchy: RwSignal<TrackHierarchy>,
+    selection: RwSignal<Option<TrackNode>>,
+    transitive_selection: RwSignal<HashSet<TrackId>>,
     is_dragging: RwSignal<bool>,
     drop_location: RwSignal<DropLocation>,
-    children: RwSignal<ImHashMap<Node, ImVec<Node>>>,
     min_track_height: f64,
-    track_heights: RwSignal<HashMap<Node, RwSignal<f64>>>,
+    track_heights: RwSignal<HashMap<TrackNode, RwSignal<f64>>>,
 }
 
-pub fn track_tree_view<B: Backend>(id: TrackId) -> impl IntoView {
-    let root = Node {
-        id,
-        parent: None,
-        index: 0,
-    };
-
+pub fn track_tree_view<B: Backend>(root: TrackId) -> impl IntoView {
     let state = State {
-        root,
         selection: RwSignal::new(None),
         transitive_selection: RwSignal::new(HashSet::default()),
         is_dragging: RwSignal::new(false),
         drop_location: RwSignal::new(DropLocation::Forbidden),
-        children: RwSignal::new(ImHashMap::default()),
+        hierarchy: RwSignal::new(TrackHierarchy::new(root)),
         min_track_height: 50.0,
         track_heights: RwSignal::new(HashMap::default()),
     };
 
+    api::get_track_hierarchy::<B>(root, move |new_hierarchy| {
+        state.hierarchy.set(new_hierarchy);
+    });
+
+    api::subscribe_track_hierarchy::<B>(root, move |event| {
+        let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event;
+        state.hierarchy.update(|v| {
+            v.set_children(id, new_children.into_iter().collect());
+        });
+    });
+
+    let order = create_memo(move |_| {
+        let mut order = ImVec::new();
+
+        state.hierarchy.with(|hierarchy| {
+            hierarchy.dfs(root, |node| {
+                order.push_back(node);
+            })
+        });
+
+        order
+    });
+
+    let get_height = move |node: &TrackNode| {
+        state.track_heights.with(|heights| {
+            heights
+                .get(&node)
+                .map(|signal| signal.get())
+                .unwrap_or(state.min_track_height)
+        })
+    };
+
+    let tcp_tree = virtual_stack(
+        VirtualDirection::Vertical,
+        VirtualItemSize::Fn(Box::new(get_height)),
+        move || order.get(),
+        move |node| *node,
+        move |node| tcp_tree_node::<B>(state, node),
+    );
+
+    let tav_tree = virtual_stack(
+        VirtualDirection::Vertical,
+        VirtualItemSize::Fn(Box::new(move |(_, node)| get_height(node))),
+        move || order.get().enumerate(),
+        move |(idx, node)| (*node, idx % 2 == 0),
+        move |(idx, node)| tav_tree_node::<B>(state, node, idx % 2 == 0),
+    );
+
     scroll(
         h_stack((
-            tcp_tree_node::<B>(root, state).style(|s| s.width(400.0)),
-            tap_tree_node::<B>(root, state, true).style(|s| s.flex_grow(1.0)),
+            tcp_tree.style(|s| s.width(400.0)),
+            tav_tree.style(|s| s.flex_grow(1.0)),
         ))
         .style(|s| s.width_full()),
     )
 }
 
-fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
+fn tcp_tree_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
     let is_resizing = RwSignal::new(false);
     let prev_resizing_y = RwSignal::new(None);
 
@@ -93,13 +129,11 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
     let track_resizer = empty();
     let track_resizer_id = track_resizer.id();
 
-    let children = create_memo(move |_| {
+    let has_children = create_memo(move |_| {
         state
-            .children
-            .with(|c| c.get(&node).cloned().unwrap_or_default())
+            .hierarchy
+            .with(|h| h.children(node.id).next().is_some())
     });
-
-    let has_children = create_memo(move |_| !children.get().is_empty());
 
     let select = move |ev: &Event| {
         let Event::PointerDown(ev) = ev else {
@@ -113,24 +147,13 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         batch(move || {
             state.selection.set(Some(node));
             state.transitive_selection.update(|selection| {
-                let children = state.children.get_untracked();
-
-                let mut stack = Vec::with_capacity(64);
-                stack.push(node);
-
                 selection.clear();
 
-                while let Some(node) = stack.pop() {
-                    selection.insert(node);
-
-                    let Some(children) = children.get(&node) else {
-                        continue;
-                    };
-
-                    for &child in children {
-                        stack.push(child);
-                    }
-                }
+                state.hierarchy.with(|hierarchy| {
+                    hierarchy.dfs(node.id, |node| {
+                        selection.insert(node.id);
+                    });
+                });
             });
         });
 
@@ -213,7 +236,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
 
         if state
             .transitive_selection
-            .with_untracked(|v| v.contains(&node))
+            .with_untracked(|v| v.contains(&node.id))
         {
             if state.drop_location.get_untracked() != DropLocation::Forbidden {
                 state.drop_location.set(DropLocation::Forbidden);
@@ -221,7 +244,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
             return EventPropagation::Stop;
         }
 
-        let location = if node == state.root {
+        let location = if node.level == 0 {
             DropLocation::Inside(node)
         } else if ev.pos.y < size.height * 0.5 {
             if sel_node.parent == node.parent && sel_node.index + 1 == node.index {
@@ -268,7 +291,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
         let drop_location = state.drop_location.get_untracked();
 
         let (new_parent, new_index) = match drop_location {
-            DropLocation::Before(Node {
+            DropLocation::Before(TrackNode {
                 parent: Some(new_parent),
                 index: before_index,
                 ..
@@ -280,7 +303,7 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 }
             }
 
-            DropLocation::After(Node {
+            DropLocation::After(TrackNode {
                 parent: Some(new_parent),
                 index: after_index,
                 ..
@@ -292,20 +315,13 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                 }
             }
 
-            DropLocation::Inside(Node { id: new_parent, .. }) => (new_parent, 0),
+            DropLocation::Inside(TrackNode { id: new_parent, .. }) => (new_parent, 0),
 
             _ => return,
         };
 
         api::move_track::<B>(old_parent, old_index, new_parent, new_index);
     };
-
-    let child_views = dyn_stack(
-        move || children.get(),
-        move |v| *v,
-        move |node| tcp_tree_node::<B>(node, state),
-    )
-    .style(|s| s.flex_direction(FlexDirection::Column).padding_left(20.0));
 
     let marker = move |location| {
         empty().style(move |s| {
@@ -391,14 +407,16 @@ fn tcp_tree_node<B: Backend>(node: Node, state: State) -> impl IntoView {
                     .margin_bottom(1.0)
             })
             .on_event(EventListener::DragOver, drag_over),
-        child_views,
         after_marker,
     ))
     .debug_name("TcpTrackNode")
-    .style(|s| s.position(Position::Relative))
+    .style(move |s| {
+        s.margin_left(20.0 * (node.level as f32))
+            .position(Position::Relative)
+    })
 }
 
-fn tap_tree_node<B: Backend>(node: Node, state: State, is_even: bool) -> impl IntoView {
+fn tav_tree_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
     let track_height = create_memo(move |_| {
         state.track_heights.with(|v| {
             v.get(&node)
@@ -407,50 +425,8 @@ fn tap_tree_node<B: Backend>(node: Node, state: State, is_even: bool) -> impl In
         })
     });
 
-    let tcp_view = track_arrangement_view::<B>(node.id, is_even)
-        .style(move |s| s.height(track_height.get()))
-        .into_view();
-
-    let set_children = move |new_children: ImVec<TrackId>| {
-        state.children.update(move |children| {
-            let new_children = new_children
-                .into_iter()
-                .enumerate()
-                .map(|(index, id)| Node {
-                    id,
-                    parent: Some(node.id),
-                    index,
-                })
-                .collect();
-            children.insert(node, new_children);
-        });
-    };
-
-    let children = create_memo(move |_| {
-        state
-            .children
-            .with(|c| c.get(&node).cloned().unwrap_or_default())
-    });
-
-    api::get_track_children::<B>(node.id, move |new_children| {
-        set_children(new_children);
-    });
-
-    api::subscribe_track_hierarchy::<B>(node.id, move |event| {
-        let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event;
-        if id == node.id {
-            set_children(new_children);
-        }
-    });
-
-    let child_views = dyn_stack(
-        move || children.get(),
-        move |v| *v,
-        move |node| tap_tree_node::<B>(node, state, !is_even),
-    )
-    .style(|s| s.flex_direction(FlexDirection::Column));
-
-    v_stack((tcp_view, child_views))
+    track_arrangement_view::<B>(node.id, is_even)
+        .style(move |s| s.width_full().height(track_height.get()))
 }
 
 fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
@@ -502,6 +478,6 @@ fn track_control_panel<B: Backend>(id: TrackId) -> impl IntoView {
 fn track_arrangement_view<B: Backend>(_id: TrackId, is_even: bool) -> impl IntoView {
     label(move || "Arrangement view...").style(move |s| {
         s.width_full()
-            .background(Color::BLACK.with_alpha_factor(if is_even { 0.05 } else { 0.1 }))
+            .background(Color::BLACK.with_alpha_factor(if is_even { 0.03 } else { 0.1 }))
     })
 }

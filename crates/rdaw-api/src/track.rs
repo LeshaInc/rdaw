@@ -1,4 +1,4 @@
-use rdaw_core::collections::ImVec;
+use rdaw_core::collections::{HashMap, ImVec};
 use rdaw_core::time::RealTime;
 
 use crate::{BoxStream, ItemId, Result, Time};
@@ -27,6 +27,8 @@ pub trait TrackOperations {
     async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
 
     async fn get_track_children(&self, parent: TrackId) -> Result<ImVec<TrackId>>;
+
+    async fn get_track_hierarchy(&self, root: TrackId) -> Result<TrackHierarchy>;
 
     async fn append_track_child(&self, parent: TrackId, child: TrackId) -> Result<()>;
 
@@ -113,6 +115,73 @@ pub enum TrackEvent {
         id: TrackItemId,
         new_duration: RealTime,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct TrackHierarchy {
+    root: TrackId,
+    children: HashMap<TrackId, Vec<TrackId>>,
+}
+
+impl TrackHierarchy {
+    pub fn new(root: TrackId) -> TrackHierarchy {
+        TrackHierarchy {
+            root,
+            children: HashMap::default(),
+        }
+    }
+
+    pub fn root(&self) -> TrackId {
+        self.root
+    }
+
+    pub fn dfs(&self, root: TrackId, mut callback: impl FnMut(TrackNode)) {
+        self.dfs_inner(
+            TrackNode {
+                id: root,
+                index: 0,
+                level: 0,
+                parent: None,
+            },
+            &mut callback,
+        );
+    }
+
+    fn dfs_inner(&self, node: TrackNode, callback: &mut impl FnMut(TrackNode)) {
+        callback(node);
+
+        let Some(children) = self.children.get(&node.id) else {
+            return;
+        };
+
+        for (index, &id) in children.iter().enumerate() {
+            self.dfs_inner(
+                TrackNode {
+                    id,
+                    index,
+                    level: node.level + 1,
+                    parent: Some(node.id),
+                },
+                callback,
+            );
+        }
+    }
+
+    pub fn children(&self, id: TrackId) -> impl Iterator<Item = TrackId> + '_ {
+        self.children.get(&id).into_iter().flatten().copied()
+    }
+
+    pub fn set_children(&mut self, id: TrackId, new_children: Vec<TrackId>) {
+        self.children.insert(id, new_children);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct TrackNode {
+    pub id: TrackId,
+    pub index: usize,
+    pub level: usize,
+    pub parent: Option<TrackId>,
 }
 
 #[derive(Debug, Clone)]

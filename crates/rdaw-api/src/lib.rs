@@ -15,7 +15,8 @@ pub use self::error::{Error, Result};
 pub use self::item::{AudioItemId, ItemId};
 pub use self::source::{AudioSourceId, SourceId};
 pub use self::track::{
-    TrackEvent, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId, TrackOperations,
+    TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId, TrackNode,
+    TrackOperations,
 };
 
 pub trait Backend: TrackOperations + BlobOperations + Sync + 'static {}

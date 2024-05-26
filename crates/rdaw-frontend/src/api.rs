@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use floem::reactive::use_context;
 use rdaw_api::{
-    Backend, BlobId, Error, ItemId, Time, TrackEvent, TrackHierarchyEvent, TrackId, TrackItem,
-    TrackItemId,
+    Backend, BlobId, Error, ItemId, Time, TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId,
+    TrackItem, TrackItemId,
 };
 use rdaw_core::collections::ImVec;
 
@@ -101,6 +101,8 @@ generate_methods! {
     fn set_track_name(id: TrackId, name: String);
 
     fn get_track_children(parent: TrackId) -> ImVec<TrackId>;
+
+    fn get_track_hierarchy(root: TrackId) -> TrackHierarchy;
 
     fn append_track_child(parent: TrackId, child: TrackId);
 

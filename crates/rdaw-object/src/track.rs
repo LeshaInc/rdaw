@@ -8,11 +8,14 @@ use crate::{BeatMap, Hub, Object, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct Track {
+    pub uuid: Uuid,
     pub name: String,
-    uuid: Uuid,
+
+    pub children: Vec<TrackId>,
+    pub ancestors: HashSet<TrackId>,
+    pub direct_ancestors: HashSet<TrackId>,
+
     beat_map: BeatMap,
-    ancestors: HashSet<TrackId>,
-    children: Vec<TrackId>,
     items: SlotMap<TrackItemId, TrackItem>,
     items_tree: RTree<TreeItem>,
 }
@@ -20,30 +23,15 @@ pub struct Track {
 impl Track {
     pub fn new(beat_map: BeatMap, name: String) -> Track {
         Track {
-            name,
             uuid: Uuid::new_v4(),
-            beat_map,
+            name,
             ancestors: HashSet::default(),
+            direct_ancestors: HashSet::default(),
+            beat_map,
             children: Vec::new(),
             items: SlotMap::default(),
             items_tree: RTree::new(),
         }
-    }
-
-    pub fn ancestors(&self) -> impl ExactSizeIterator<Item = TrackId> + '_ {
-        self.ancestors.iter().copied()
-    }
-
-    pub fn contains_ancestor(&mut self, track: TrackId) -> bool {
-        self.ancestors.contains(&track)
-    }
-
-    pub fn add_ancestor(&mut self, track: TrackId) {
-        self.ancestors.insert(track);
-    }
-
-    pub fn remove_ancestor(&mut self, track: TrackId) {
-        self.ancestors.remove(&track);
     }
 
     pub fn children(&self) -> impl ExactSizeIterator<Item = TrackId> + '_ {
