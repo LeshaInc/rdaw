@@ -156,6 +156,10 @@ impl<T: IpcSafe> RawIpcSender<T> {
 }
 
 impl<T: IpcSafe> RawSender<T> for RawIpcSender<T> {
+    fn refresh(&mut self) {
+        self.producer.refresh();
+    }
+
     fn is_closed(&self) -> bool {
         self.producer.is_closed()
     }
@@ -295,6 +299,10 @@ impl<T: IpcSafe> RawIpcReceiver<T> {
 }
 
 impl<T: IpcSafe> RawReceiver<T> for RawIpcReceiver<T> {
+    fn refresh(&mut self) {
+        self.consumer.refresh();
+    }
+
     fn is_closed(&self) -> bool {
         self.consumer.is_closed()
     }

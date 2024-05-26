@@ -349,7 +349,6 @@ impl Backend {
         }
 
         if new_parent.ancestors.contains(&child_id) {
-            tracing::error!("HERE");
             return Err(Error::RecursiveTrack);
         }
 

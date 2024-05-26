@@ -1,15 +1,14 @@
 pub mod api;
 mod track;
 
+use std::collections::VecDeque;
 use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_executor::Executor;
-use floem::ext_event::create_ext_action;
+use floem::ext_event::{create_ext_action, register_ext_trigger};
 use floem::keyboard::{Key, Modifiers, NamedKey};
-use floem::reactive::{provide_context, use_context, Scope};
+use floem::reactive::{provide_context, use_context, with_scope, Scope};
 use floem::views::Decorators;
 use floem::{IntoView, View};
 use futures_lite::future::block_on;
@@ -28,36 +27,53 @@ pub fn spawn<T: Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
     on_completed: impl FnOnce(T) + 'static,
 ) {
+    let scope = Scope::current();
     let executor = use_context::<Arc<Executor>>().unwrap();
 
-    let send = create_ext_action(Scope::new(), move |v| {
-        on_completed(v);
+    let child = scope.create_child();
+    let send = create_ext_action(scope, move |v| {
+        with_scope(child, move || {
+            on_completed(v);
+        });
     });
 
-    executor
-        .spawn(async move {
-            send(future.await);
-        })
-        .detach();
+    scope.create_rw_signal(executor.spawn(async move {
+        send(future.await);
+    }));
 }
 
-pub fn stream_for_each<T: Send + 'static>(stream: BoxStream<T>, on_message: impl Fn(T) + 'static) {
-    fn next<T: Send + 'static>(mut stream: BoxStream<T>, on_message: Rc<impl Fn(T) + 'static>) {
-        spawn(
-            async move {
-                let value = Pin::new(&mut stream).next().await?;
-                Some((stream, value))
-            },
-            move |v| {
-                if let Some((stream, value)) = v {
-                    on_message(value);
-                    next(stream, on_message.clone());
-                }
-            },
-        );
-    }
+pub fn stream_for_each<T: Send + 'static>(
+    mut stream: BoxStream<T>,
+    on_message: impl Fn(T) + 'static,
+) {
+    let scope = Scope::current();
+    let queue = Arc::new(Mutex::new(VecDeque::new()));
 
-    next(stream, Rc::new(on_message));
+    let trigger = scope.create_trigger();
+    trigger.notify();
+
+    let queue_clone = queue.clone();
+    scope.create_effect(move |_| {
+        trigger.track();
+        if let Ok(mut queue) = queue_clone.lock() {
+            while let Some(value) = queue.pop_front() {
+                on_message(value);
+            }
+        }
+    });
+
+    spawn(
+        async move {
+            while let Some(value) = stream.next().await {
+                if let Ok(mut queue) = queue.lock() {
+                    queue.push_back(value);
+                }
+
+                register_ext_trigger(trigger);
+            }
+        },
+        drop,
+    );
 }
 
 pub fn run<B: Backend>(backend: B) {

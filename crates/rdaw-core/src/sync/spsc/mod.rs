@@ -29,6 +29,8 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 pub trait RawSender<T> {
+    fn refresh(&mut self);
+
     fn is_closed(&self) -> bool;
 
     fn send_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed>;
@@ -43,6 +45,8 @@ pub trait RawSender<T> {
 }
 
 pub trait RawReceiver<T> {
+    fn refresh(&mut self);
+
     fn is_closed(&self) -> bool;
 
     fn recv_wait(&mut self, count: usize, deadline: Option<Instant>) -> Result<(), Closed>;
@@ -62,6 +66,10 @@ pub struct Sender<T, R: RawSender<T> = RawLocalSender<T>> {
 }
 
 impl<T, R: RawSender<T>> Sender<T, R> {
+    pub fn refresh(&mut self) {
+        self.raw.refresh();
+    }
+
     pub fn is_closed(&self) -> bool {
         self.raw.is_closed()
     }
@@ -269,6 +277,10 @@ pub struct Receiver<T, R: RawReceiver<T> = RawLocalReceiver<T>> {
 }
 
 impl<T, R: RawReceiver<T>> Receiver<T, R> {
+    pub fn refresh(&mut self) {
+        self.raw.refresh();
+    }
+
     pub fn is_closed(&self) -> bool {
         self.raw.is_closed()
     }

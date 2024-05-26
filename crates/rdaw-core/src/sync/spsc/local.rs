@@ -72,6 +72,10 @@ impl<T> RawLocalSender<T> {
 }
 
 impl<T> RawSender<T> for RawLocalSender<T> {
+    fn refresh(&mut self) {
+        self.producer.refresh();
+    }
+
     fn is_closed(&self) -> bool {
         self.producer.is_closed()
     }
@@ -194,6 +198,10 @@ impl<T> RawLocalReceiver<T> {
 }
 
 impl<T> RawReceiver<T> for RawLocalReceiver<T> {
+    fn refresh(&mut self) {
+        self.consumer.refresh();
+    }
+
     fn is_closed(&self) -> bool {
         self.consumer.is_closed()
     }

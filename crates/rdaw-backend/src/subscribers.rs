@@ -28,7 +28,7 @@ impl<K, E> Subscribers<K, E> {
     }
 }
 
-impl<K: Copy + Eq + Hash, E: Clone> Subscribers<K, E> {
+impl<K: std::fmt::Debug + Copy + Eq + Hash, E: Clone> Subscribers<K, E> {
     pub fn subscribe(&mut self, key: K) -> Subscriber<E> {
         let (sender, receiver) = spsc::channel(CAPACITY);
 
@@ -74,7 +74,11 @@ impl<K: Copy + Eq + Hash, E: Clone> Subscribers<K, E> {
         }
 
         self.map.retain(|_, entry| {
-            entry.senders.retain(|sender| !sender.is_closed());
+            entry.senders.retain_mut(|sender| {
+                sender.refresh();
+                !sender.is_closed()
+            });
+
             !entry.senders.is_empty()
         });
     }
