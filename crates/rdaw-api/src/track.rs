@@ -17,6 +17,11 @@ pub trait TrackOperations {
 
     async fn subscribe_track(&self, id: TrackId) -> Result<BoxStream<TrackEvent>>;
 
+    async fn subscribe_track_hierarchy(
+        &self,
+        root: TrackId,
+    ) -> Result<BoxStream<TrackHierarchyEvent>>;
+
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 
     async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
@@ -92,9 +97,6 @@ pub enum TrackEvent {
     NameChanged {
         new_name: String,
     },
-    ChildrenChanged {
-        new_children: ImVec<TrackId>,
-    },
     ItemAdded {
         id: TrackItemId,
         start: RealTime,
@@ -110,5 +112,13 @@ pub enum TrackEvent {
     ItemResized {
         id: TrackItemId,
         new_duration: RealTime,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum TrackHierarchyEvent {
+    ChildrenChanged {
+        id: TrackId,
+        new_children: ImVec<TrackId>,
     },
 }

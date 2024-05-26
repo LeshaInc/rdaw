@@ -1,6 +1,6 @@
 use rdaw_api::{
-    BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackId, TrackItem, TrackItemId,
-    TrackOperations,
+    BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackHierarchyEvent, TrackId, TrackItem,
+    TrackItemId, TrackOperations,
 };
 use rdaw_core::collections::ImVec;
 use rdaw_object::{BeatMap, Track};
@@ -25,6 +25,10 @@ crate::dispatch::define_dispatch_ops! {
     SubscribeTrack => subscribe_track(
         id: TrackId,
     ) -> Result<BoxStream<TrackEvent>>;
+
+    SubscribeTrackHierarchy => subscribe_track_hierarchy(
+        root: TrackId,
+    ) -> Result<BoxStream<TrackHierarchyEvent>>;
 
     GetTrackName => get_track_name(
         id: TrackId,
@@ -136,6 +140,18 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    pub fn subscribe_track_hierarchy(
+        &mut self,
+        id: TrackId,
+    ) -> Result<BoxStream<TrackHierarchyEvent>> {
+        if !self.hub.tracks.contains_id(id) {
+            return Err(Error::InvalidId);
+        }
+
+        Ok(Box::pin(self.track_hierarchy_subscribers.subscribe(id)))
+    }
+
+    #[instrument(skip_all, err)]
     pub fn get_track_name(&self, id: TrackId) -> Result<String> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         Ok(track.name.clone())
@@ -159,11 +175,18 @@ impl Backend {
         Ok(children)
     }
 
-    fn notify_track_child_change(&mut self, track_id: TrackId) {
-        let track = &self.hub.tracks[track_id];
+    fn notify_track_child_change(&mut self, id: TrackId) {
+        let track = &self.hub.tracks[id];
         let new_children = track.children().collect();
-        let event = TrackEvent::ChildrenChanged { new_children };
-        self.track_subscribers.notify(track_id, event);
+
+        let event = TrackHierarchyEvent::ChildrenChanged { id, new_children };
+
+        for ancestor in track.ancestors() {
+            self.track_hierarchy_subscribers
+                .notify(ancestor, event.clone());
+        }
+
+        self.track_hierarchy_subscribers.notify(id, event);
     }
 
     #[instrument(skip_all, err)]

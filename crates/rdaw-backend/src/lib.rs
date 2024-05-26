@@ -4,7 +4,7 @@ mod subscribers;
 mod track;
 
 use async_channel::{Receiver, Sender};
-use rdaw_api::{TrackEvent, TrackId};
+use rdaw_api::{TrackEvent, TrackHierarchyEvent, TrackId};
 use rdaw_object::Hub;
 
 pub use self::blob::{BlobCache, BlobOperation};
@@ -16,6 +16,7 @@ pub struct Backend {
     hub: Hub,
     blob_cache: BlobCache,
     track_subscribers: Subscribers<TrackId, TrackEvent>,
+    track_hierarchy_subscribers: Subscribers<TrackId, TrackHierarchyEvent>,
     sender: Sender<Operation>,
     receiver: Receiver<Operation>,
 }
@@ -27,6 +28,7 @@ impl Backend {
             hub: Hub::default(),
             blob_cache: BlobCache::default(),
             track_subscribers: Subscribers::default(),
+            track_hierarchy_subscribers: Subscribers::default(),
             sender,
             receiver,
         }
@@ -47,6 +49,7 @@ impl Backend {
 
     pub async fn update(&mut self) {
         self.track_subscribers.update().await;
+        self.track_hierarchy_subscribers.update().await;
     }
 
     pub async fn run(mut self) {

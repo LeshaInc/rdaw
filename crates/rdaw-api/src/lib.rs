@@ -14,7 +14,9 @@ pub use self::blob::{BlobId, BlobOperations};
 pub use self::error::{Error, Result};
 pub use self::item::{AudioItemId, ItemId};
 pub use self::source::{AudioSourceId, SourceId};
-pub use self::track::{TrackEvent, TrackId, TrackItem, TrackItemId, TrackOperations};
+pub use self::track::{
+    TrackEvent, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId, TrackOperations,
+};
 
 pub trait Backend: TrackOperations + BlobOperations + Sync + 'static {}
 

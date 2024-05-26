@@ -5,7 +5,7 @@ use floem::style::CursorStyle;
 use floem::taffy::{Display, FlexDirection, Position};
 use floem::views::{dyn_stack, empty, h_stack, label, scroll, text_input, v_stack, Decorators};
 use floem::{IntoView, View};
-use rdaw_api::{Backend, TrackEvent, TrackId};
+use rdaw_api::{Backend, TrackEvent, TrackHierarchyEvent, TrackId};
 use rdaw_core::collections::{HashMap, HashSet, ImHashMap, ImVec};
 use rdaw_ui_kit::{button, ColorKind, Level};
 
@@ -436,8 +436,9 @@ fn tap_tree_node<B: Backend>(node: Node, state: State, is_even: bool) -> impl In
         set_children(new_children);
     });
 
-    api::subscribe_track::<B>(node.id, move |event| {
-        if let TrackEvent::ChildrenChanged { new_children } = event {
+    api::subscribe_track_hierarchy::<B>(node.id, move |event| {
+        let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event;
+        if id == node.id {
             set_children(new_children);
         }
     });

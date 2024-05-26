@@ -2,7 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use floem::reactive::use_context;
-use rdaw_api::{Backend, BlobId, Error, ItemId, Time, TrackEvent, TrackId, TrackItem, TrackItemId};
+use rdaw_api::{
+    Backend, BlobId, Error, ItemId, Time, TrackEvent, TrackHierarchyEvent, TrackId, TrackItem,
+    TrackItemId,
+};
 use rdaw_core::collections::ImVec;
 
 use crate::{spawn, stream_for_each};
@@ -89,6 +92,9 @@ generate_methods! {
 
     #[sub]
     fn subscribe_track(id: TrackId) -> TrackEvent;
+
+    #[sub]
+    fn subscribe_track_hierarchy(id: TrackId) -> TrackHierarchyEvent;
 
     fn get_track_name(id: TrackId) -> String;
 
