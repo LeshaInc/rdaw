@@ -4,7 +4,7 @@ use rdaw_core::time::RealTime;
 use rstar::{RTree, RTreeObject, AABB};
 use slotmap::SlotMap;
 
-use crate::{BeatMap, Hub, Object, Uuid};
+use crate::{Hub, Object, TempoMap, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct Track {
@@ -15,19 +15,19 @@ pub struct Track {
     pub ancestors: HashSet<TrackId>,
     pub direct_ancestors: HashSet<TrackId>,
 
-    beat_map: BeatMap,
+    tempo_map: TempoMap,
     items: SlotMap<TrackItemId, TrackItem>,
     items_tree: RTree<TreeItem>,
 }
 
 impl Track {
-    pub fn new(beat_map: BeatMap, name: String) -> Track {
+    pub fn new(tempo_map: TempoMap, name: String) -> Track {
         Track {
             uuid: Uuid::new_v4(),
             name,
             ancestors: HashSet::default(),
             direct_ancestors: HashSet::default(),
-            beat_map,
+            tempo_map,
             children: Vec::new(),
             items: SlotMap::default(),
             items_tree: RTree::new(),
@@ -60,8 +60,8 @@ impl Track {
     }
 
     pub fn insert(&mut self, item_id: ItemId, position: Time, duration: Time) -> TrackItemId {
-        let real_start = self.beat_map.to_real(position);
-        let real_end = real_start + self.beat_map.to_real(duration);
+        let real_start = self.tempo_map.to_real(position);
+        let real_end = real_start + self.tempo_map.to_real(duration);
 
         let item = TrackItem {
             inner: item_id,
@@ -99,8 +99,8 @@ impl Track {
         start: Option<Time>,
         end: Option<Time>,
     ) -> impl Iterator<Item = (TrackItemId, &TrackItem)> + '_ {
-        let start = start.map_or(RealTime::MIN, |t| self.beat_map.to_real(t));
-        let end = end.map_or(RealTime::MAX, |t| self.beat_map.to_real(t));
+        let start = start.map_or(RealTime::MIN, |t| self.tempo_map.to_real(t));
+        let end = end.map_or(RealTime::MAX, |t| self.tempo_map.to_real(t));
 
         let envelope = AABB::from_corners((start.as_nanos(), 0), (end.as_nanos(), 0));
 
@@ -112,14 +112,14 @@ impl Track {
     fn update_item_envelope(
         &mut self,
         id: TrackItemId,
-        mut func: impl FnMut(&mut TrackItem, &BeatMap),
+        mut func: impl FnMut(&mut TrackItem, &TempoMap),
     ) {
         let item = &mut self.items[id];
 
         let old_start = item.real_start;
         let old_end = item.real_end;
 
-        func(item, &self.beat_map);
+        func(item, &self.tempo_map);
 
         let new_start = item.real_start;
         let new_end = item.real_end;
@@ -135,18 +135,18 @@ impl Track {
     }
 
     pub fn move_item(&mut self, id: TrackItemId, new_pos: Time) {
-        self.update_item_envelope(id, |item, beat_map| {
+        self.update_item_envelope(id, |item, tempo_map| {
             let duration = item.real_duration();
             item.position = new_pos;
-            item.real_start = beat_map.to_real(new_pos);
+            item.real_start = tempo_map.to_real(new_pos);
             item.real_end = item.real_start + duration;
         });
     }
 
     pub fn resize_item(&mut self, id: TrackItemId, new_duration: Time) {
-        self.update_item_envelope(id, |item, beat_map| {
+        self.update_item_envelope(id, |item, tempo_map| {
             item.duration = new_duration;
-            item.real_end = item.real_start + beat_map.to_real(new_duration);
+            item.real_end = item.real_start + tempo_map.to_real(new_duration);
         });
     }
 }
@@ -209,12 +209,12 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let beat_map = BeatMap {
+        let tempo_map = TempoMap {
             beats_per_minute: 120.0,
             beats_per_bar: 4,
         };
 
-        let mut track = Track::new(beat_map, "Unnamed".into());
+        let mut track = Track::new(tempo_map, "Unnamed".into());
 
         let inner = item_id();
         let id = track.insert(
@@ -246,12 +246,12 @@ mod tests {
 
     #[test]
     fn test_range() {
-        let beat_map = BeatMap {
+        let tempo_map = TempoMap {
             beats_per_minute: 120.0,
             beats_per_bar: 4,
         };
 
-        let mut track = Track::new(beat_map, "Unnamed".into());
+        let mut track = Track::new(tempo_map, "Unnamed".into());
 
         let real_0s = Time::Real(RealTime::from_secs_f64(0.0));
         let real_1s = Time::Real(RealTime::from_secs_f64(1.0));

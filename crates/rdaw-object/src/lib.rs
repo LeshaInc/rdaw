@@ -1,18 +1,18 @@
-mod beat_map;
 mod blob;
 mod item;
 mod source;
 mod storage;
+mod tempo_map;
 mod track;
 
 use slotmap::Key;
 pub use uuid::Uuid;
 
-pub use self::beat_map::BeatMap;
 pub use self::blob::Blob;
 pub use self::item::AudioItem;
 pub use self::source::AudioSource;
 pub use self::storage::Storage;
+pub use self::tempo_map::TempoMap;
 pub use self::track::Track;
 
 pub trait Object {

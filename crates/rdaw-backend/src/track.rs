@@ -2,7 +2,7 @@ use rdaw_api::{
     BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackHierarchy, TrackHierarchyEvent,
     TrackId, TrackItem, TrackItemId, TrackOperations,
 };
-use rdaw_object::{BeatMap, Track};
+use rdaw_object::{TempoMap, Track};
 use slotmap::Key;
 use tracing::instrument;
 
@@ -115,12 +115,12 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn create_track(&mut self) -> Result<TrackId> {
         // TODO: remove this
-        let beat_map = BeatMap {
+        let tempo_map = TempoMap {
             beats_per_minute: 120.0,
             beats_per_bar: 4,
         };
 
-        let track = Track::new(beat_map, String::new());
+        let track = Track::new(tempo_map, String::new());
         let id = self.hub.tracks.insert(track);
 
         let mut id_str = format!("{:?}", id.data());

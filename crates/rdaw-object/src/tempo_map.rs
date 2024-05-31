@@ -2,12 +2,12 @@ use rdaw_api::{BeatTime, Time};
 use rdaw_core::time::RealTime;
 
 #[derive(Debug, Clone)]
-pub struct BeatMap {
+pub struct TempoMap {
     pub beats_per_minute: f32,
     pub beats_per_bar: u32,
 }
 
-impl BeatMap {
+impl TempoMap {
     pub fn to_real(&self, time: Time) -> RealTime {
         match time {
             Time::Real(t) => t,
