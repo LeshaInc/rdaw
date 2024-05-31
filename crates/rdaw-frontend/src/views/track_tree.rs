@@ -1,4 +1,5 @@
 use floem::event::{Event, EventListener, EventPropagation};
+use floem::kurbo::Vec2;
 use floem::peniko::Color;
 use floem::reactive::{batch, create_memo, RwSignal};
 use floem::style::CursorStyle;
@@ -92,13 +93,30 @@ pub fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
         move |(idx, node)| arrangement_node::<B>(state, node, idx % 2 == 0),
     );
 
+    let scroll_delta = RwSignal::new(Vec2::ZERO);
+
     scroll(
         h_stack((
             control_tree.style(|s| s.width(400.0)),
-            arrangement_tree.style(|s| s.flex_grow(1.0)),
+            arrangement_tree.style(|s| s.flex_grow(1.0)).on_event(
+                EventListener::PointerWheel,
+                move |ev| {
+                    let Event::PointerWheel(ev) = ev else {
+                        return EventPropagation::Continue;
+                    };
+
+                    if ev.modifiers.shift() {
+                        scroll_delta.set(ev.delta);
+                        return EventPropagation::Stop;
+                    }
+
+                    EventPropagation::Continue
+                },
+            ),
         ))
         .style(|s| s.width_full()),
     )
+    .scroll_delta(move || scroll_delta.get())
     .debug_name("TrackTree")
 }
 
