@@ -3,6 +3,7 @@ mod blob;
 mod error;
 mod item;
 mod source;
+mod tempo_map;
 mod track;
 
 use std::pin::Pin;
@@ -14,6 +15,7 @@ pub use self::blob::{BlobId, BlobOperations};
 pub use self::error::{Error, Result};
 pub use self::item::{AudioItemId, ItemId};
 pub use self::source::{AudioSourceId, SourceId};
+pub use self::tempo_map::TempoMapId;
 pub use self::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId, TrackNode,
     TrackOperations,

@@ -115,12 +115,9 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn create_track(&mut self) -> Result<TrackId> {
         // TODO: remove this
-        let tempo_map = TempoMap {
-            beats_per_minute: 120.0,
-            beats_per_bar: 4,
-        };
+        let tempo_map_id = self.hub.tempo_maps.insert(TempoMap::new(120.0, 4));
 
-        let track = Track::new(tempo_map, String::new());
+        let track = Track::new(tempo_map_id, String::new());
         let id = self.hub.tracks.insert(track);
 
         let mut id_str = format!("{:?}", id.data());
@@ -174,7 +171,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
-        Ok(track.children.clone())
+        Ok(track.links.children.clone())
     }
 
     #[instrument(skip_all, err)]
@@ -186,7 +183,7 @@ impl Backend {
 
         while let Some(id) = stack.pop() {
             let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
-            let children = track.children.to_vec();
+            let children = track.links.children.to_vec();
             stack.extend(children.iter().copied());
             hierarchy.set_children(id, children);
         }
@@ -196,11 +193,11 @@ impl Backend {
 
     fn notify_track_child_change(&mut self, id: TrackId) {
         let track = &self.hub.tracks[id];
-        let new_children = track.children.iter().copied().collect();
+        let new_children = track.links.children.iter().copied().collect();
 
         let event = TrackHierarchyEvent::ChildrenChanged { id, new_children };
 
-        for &ancestor in &track.ancestors {
+        for &ancestor in &track.links.ancestors {
             self.track_hierarchy_subscribers
                 .notify(ancestor, event.clone());
         }
@@ -214,11 +211,11 @@ impl Backend {
             return;
         };
 
-        track.direct_ancestors.insert(ancestor_id);
-        track.ancestors.insert(ancestor_id);
+        track.links.direct_ancestors.insert(ancestor_id);
+        track.links.ancestors.insert(ancestor_id);
 
-        for &transitive_ancestor_id in &ancestor.ancestors {
-            track.ancestors.insert(transitive_ancestor_id);
+        for &transitive_ancestor_id in &ancestor.links.ancestors {
+            track.links.ancestors.insert(transitive_ancestor_id);
         }
     }
 
@@ -227,30 +224,30 @@ impl Backend {
             return;
         };
 
-        track.direct_ancestors.remove(&ancestor_id);
+        track.links.direct_ancestors.remove(&ancestor_id);
 
-        let mut new_ancestors = std::mem::take(&mut track.ancestors);
+        let mut new_ancestors = std::mem::take(&mut track.links.ancestors);
         new_ancestors.clear();
 
-        for &ancestor_id in &self.hub.tracks[track_id].direct_ancestors {
+        for &ancestor_id in &self.hub.tracks[track_id].links.direct_ancestors {
             new_ancestors.insert(ancestor_id);
 
             let Some(ancestor) = self.hub.tracks.get(ancestor_id) else {
                 continue;
             };
 
-            for &transitive_ancestor in &ancestor.ancestors {
+            for &transitive_ancestor in &ancestor.links.ancestors {
                 new_ancestors.insert(transitive_ancestor);
             }
         }
 
-        self.hub.tracks[track_id].ancestors = new_ancestors;
+        self.hub.tracks[track_id].links.ancestors = new_ancestors;
     }
 
     #[instrument(skip_all, err)]
     pub fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
         let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
-        let index = track.children.len();
+        let index = track.links.children.len();
         self.insert_track_child(parent, child, index)
     }
 
@@ -271,15 +268,15 @@ impl Backend {
 
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
-        if index > parent.children.len() {
+        if index > parent.links.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        if parent.ancestors.contains(&child_id) {
+        if parent.links.ancestors.contains(&child_id) {
             return Err(Error::RecursiveTrack);
         }
 
-        parent.children.insert(index, child_id);
+        parent.links.children.insert(index, child_id);
         self.add_track_ancestor(child_id, parent_id);
         self.notify_track_child_change(parent_id);
 
@@ -309,12 +306,12 @@ impl Backend {
     ) -> Result<()> {
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
-        if old_index >= parent.children.len() || new_index >= parent.children.len() {
+        if old_index >= parent.links.children.len() || new_index >= parent.links.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        let child_id = parent.children.remove(old_index);
-        parent.children.insert(new_index, child_id);
+        let child_id = parent.links.children.remove(old_index);
+        parent.links.children.insert(new_index, child_id);
 
         self.notify_track_child_change(parent_id);
 
@@ -330,6 +327,7 @@ impl Backend {
     ) -> Result<()> {
         let old_parent = self.hub.tracks.get(old_parent_id).ok_or(Error::InvalidId)?;
         let &child_id = old_parent
+            .links
             .children
             .get(old_index)
             .ok_or(Error::IndexOutOfBounds)?;
@@ -344,19 +342,19 @@ impl Backend {
             .get_disjoint_mut([old_parent_id, new_parent_id])
             .ok_or(Error::InvalidId)?;
 
-        if new_index > new_parent.children.len() {
+        if new_index > new_parent.links.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        if new_parent.ancestors.contains(&child_id) {
+        if new_parent.links.ancestors.contains(&child_id) {
             return Err(Error::RecursiveTrack);
         }
 
-        let child_id = old_parent.children.remove(old_index);
+        let child_id = old_parent.links.children.remove(old_index);
 
-        new_parent.children.insert(new_index, child_id);
+        new_parent.links.children.insert(new_index, child_id);
 
-        if !old_parent.children.contains(&child_id) {
+        if !old_parent.links.children.contains(&child_id) {
             self.remove_track_ancestor(child_id, old_parent_id);
         }
 
@@ -371,13 +369,13 @@ impl Backend {
     pub fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
-        if index >= parent.children.len() {
+        if index >= parent.links.children.len() {
             return Err(Error::IndexOutOfBounds);
         }
 
-        let child_id = parent.children.remove(index);
+        let child_id = parent.links.children.remove(index);
 
-        if !parent.children.contains(&child_id) {
+        if !parent.links.children.contains(&child_id) {
             self.remove_track_ancestor(child_id, parent_id);
         }
 
@@ -394,7 +392,19 @@ impl Backend {
         end: Option<Time>,
     ) -> Result<Vec<TrackItemId>> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
-        let items = track.range(start, end).map(|(id, _)| id).collect();
+
+        let tempo_map = self
+            .hub
+            .tempo_maps
+            .get(track.tempo_map_id)
+            .ok_or(Error::InvalidId)?;
+
+        let items = track
+            .items
+            .range(tempo_map, start, end)
+            .map(|(id, _)| id)
+            .collect();
+
         Ok(items)
     }
 
@@ -407,9 +417,16 @@ impl Backend {
         duration: Time,
     ) -> Result<TrackItemId> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
-        let item_id = track.insert(item_id, position, duration);
 
-        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let tempo_map = self
+            .hub
+            .tempo_maps
+            .get(track.tempo_map_id)
+            .ok_or(Error::InvalidId)?;
+
+        let item_id = track.items.insert(tempo_map, item_id, position, duration);
+
+        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
         let event = TrackEvent::ItemAdded {
             id: item_id,
             start: item.real_start,
@@ -423,14 +440,14 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
-        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
         Ok(item.clone())
     }
 
     #[instrument(skip_all, err)]
     pub fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
-        track.remove(item_id);
+        track.items.remove(item_id);
 
         let event = TrackEvent::ItemRemoved { id: item_id };
         self.track_subscribers.notify(id, event);
@@ -446,9 +463,16 @@ impl Backend {
         new_position: Time,
     ) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
-        track.move_item(item_id, new_position);
 
-        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let tempo_map = self
+            .hub
+            .tempo_maps
+            .get(track.tempo_map_id)
+            .ok_or(Error::InvalidId)?;
+
+        track.items.move_item(tempo_map, item_id, new_position);
+
+        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
         let event = TrackEvent::ItemMoved {
             id: item_id,
             new_start: item.real_start,
@@ -466,9 +490,16 @@ impl Backend {
         new_duration: Time,
     ) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
-        track.move_item(item_id, new_duration);
 
-        let item = track.get(item_id).ok_or(Error::InvalidId)?;
+        let tempo_map = self
+            .hub
+            .tempo_maps
+            .get(track.tempo_map_id)
+            .ok_or(Error::InvalidId)?;
+
+        track.items.move_item(tempo_map, item_id, new_duration);
+
+        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
         let new_duration = item.real_duration();
 
         let event = TrackEvent::ItemResized {

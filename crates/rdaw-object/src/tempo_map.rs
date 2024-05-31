@@ -1,13 +1,24 @@
-use rdaw_api::{BeatTime, Time};
+use rdaw_api::{BeatTime, TempoMapId, Time};
 use rdaw_core::time::RealTime;
+
+use crate::{Object, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct TempoMap {
-    pub beats_per_minute: f32,
-    pub beats_per_bar: u32,
+    uuid: Uuid,
+    beats_per_minute: f32,
+    beats_per_bar: u32,
 }
 
 impl TempoMap {
+    pub fn new(beats_per_minute: f32, beats_per_bar: u32) -> TempoMap {
+        TempoMap {
+            uuid: Uuid::new_v4(),
+            beats_per_minute,
+            beats_per_bar,
+        }
+    }
+
     pub fn to_real(&self, time: Time) -> RealTime {
         match time {
             Time::Real(t) => t,
@@ -37,5 +48,13 @@ impl TempoMap {
         let frac_beats = whole_beats + f64::from(beat.subbeat) / (f64::from(u32::MAX) + 1.0);
         let seconds = frac_beats / f64::from(self.beats_per_minute) * 60.0;
         RealTime::from_secs_f64(seconds)
+    }
+}
+
+impl Object for TempoMap {
+    type Id = TempoMapId;
+
+    fn uuid(&self) -> Uuid {
+        self.uuid
     }
 }
