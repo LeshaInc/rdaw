@@ -1,3 +1,4 @@
+mod arrangement;
 mod beat;
 mod blob;
 mod error;
@@ -10,6 +11,7 @@ use std::pin::Pin;
 
 use futures_lite::Stream;
 
+pub use self::arrangement::ArrangementId;
 pub use self::beat::{BeatTime, Time};
 pub use self::blob::{BlobId, BlobOperations};
 pub use self::error::{Error, Result};
