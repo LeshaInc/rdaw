@@ -2,7 +2,8 @@ use floem::event::Event;
 use floem::reactive::{create_effect, RwSignal};
 use floem::views::{h_stack, text_input, Decorators};
 use floem::IntoView;
-use rdaw_api::{Backend, TrackEvent, TrackId};
+use rdaw_api::track::{TrackEvent, TrackId};
+use rdaw_api::Backend;
 use rdaw_ui_kit::{button, ColorKind, Level};
 
 use crate::api;

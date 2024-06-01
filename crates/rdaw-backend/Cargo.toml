@@ -6,11 +6,11 @@ edition = "2021"
 [dependencies]
 rdaw-api.workspace = true
 rdaw-core.workspace = true
-rdaw-object.workspace = true
 
 async-channel.workspace = true
 blake3.workspace = true
 futures-lite.workspace = true
 oneshot.workspace = true
+rstar.workspace = true
 slotmap.workspace = true
 tracing.workspace = true 

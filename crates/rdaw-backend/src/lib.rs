@@ -1,36 +1,51 @@
-mod blob;
-mod dispatch;
-mod subscribers;
-mod track;
+pub mod arrangement;
+pub mod blob;
+pub mod dispatch;
+pub mod item;
+pub mod source;
+pub mod storage;
+pub mod subscribers;
+pub mod tempo_map;
+pub mod track;
 
 use async_channel::{Receiver, Sender};
-use rdaw_api::{TrackEvent, TrackHierarchyEvent, TrackId};
-use rdaw_object::Hub;
+use rdaw_core::Uuid;
+use slotmap::Key;
 
-pub use self::blob::{BlobCache, BlobOperation};
-pub use self::subscribers::{Subscriber, Subscribers};
-pub use self::track::TrackOperation;
+use self::blob::{BlobCache, BlobOperation};
+use self::storage::Hub;
+use self::subscribers::SubscribersHub;
+use self::track::TrackOperation;
+
+pub trait Object {
+    type Id: Key;
+
+    fn uuid(&self) -> Uuid;
+
+    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
+        let _unused = hub;
+        callback(self.uuid());
+    }
+}
 
 #[derive(Debug)]
 pub struct Backend {
-    hub: Hub,
-    blob_cache: BlobCache,
-    track_subscribers: Subscribers<TrackId, TrackEvent>,
-    track_hierarchy_subscribers: Subscribers<TrackId, TrackHierarchyEvent>,
     sender: Sender<Operation>,
     receiver: Receiver<Operation>,
+    hub: Hub,
+    subscribers: SubscribersHub,
+    blob_cache: BlobCache,
 }
 
 impl Backend {
     pub fn new() -> Backend {
         let (sender, receiver) = async_channel::unbounded();
         Backend {
-            hub: Hub::default(),
-            blob_cache: BlobCache::default(),
-            track_subscribers: Subscribers::default(),
-            track_hierarchy_subscribers: Subscribers::default(),
             sender,
             receiver,
+            hub: Hub::default(),
+            subscribers: SubscribersHub::default(),
+            blob_cache: BlobCache::default(),
         }
     }
 
@@ -48,8 +63,7 @@ impl Backend {
     }
 
     pub async fn update(&mut self) {
-        self.track_subscribers.update().await;
-        self.track_hierarchy_subscribers.update().await;
+        self.subscribers.update().await;
     }
 
     pub async fn run(mut self) {

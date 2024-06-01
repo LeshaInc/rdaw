@@ -1,11 +1,15 @@
-use rdaw_api::{
-    BoxStream, Error, ItemId, Result, Time, TrackEvent, TrackHierarchy, TrackHierarchyEvent,
-    TrackId, TrackItem, TrackItemId, TrackOperations,
+use rdaw_api::item::ItemId;
+use rdaw_api::time::Time;
+use rdaw_api::track::{
+    TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
+    TrackOperations,
 };
-use rdaw_object::{TempoMap, Track};
+use rdaw_api::{BoxStream, Error, Result};
 use slotmap::Key;
 use tracing::instrument;
 
+use super::Track;
+use crate::tempo_map::TempoMap;
 use crate::{Backend, BackendHandle};
 
 crate::dispatch::define_dispatch_ops! {
@@ -136,7 +140,7 @@ impl Backend {
             return Err(Error::InvalidId);
         }
 
-        Ok(Box::pin(self.track_subscribers.subscribe(id)))
+        Ok(Box::pin(self.subscribers.track.subscribe(id)))
     }
 
     #[instrument(skip_all, err)]
@@ -148,7 +152,7 @@ impl Backend {
             return Err(Error::InvalidId);
         }
 
-        Ok(Box::pin(self.track_hierarchy_subscribers.subscribe(id)))
+        Ok(Box::pin(self.subscribers.track_hierarchy.subscribe(id)))
     }
 
     #[instrument(skip_all, err)]
@@ -163,7 +167,7 @@ impl Backend {
         track.name.clone_from(&new_name);
 
         let event = TrackEvent::NameChanged { new_name };
-        self.track_subscribers.notify(id, event);
+        self.subscribers.track.notify(id, event);
 
         Ok(())
     }
@@ -198,11 +202,12 @@ impl Backend {
         let event = TrackHierarchyEvent::ChildrenChanged { id, new_children };
 
         for &ancestor in &track.links.ancestors {
-            self.track_hierarchy_subscribers
+            self.subscribers
+                .track_hierarchy
                 .notify(ancestor, event.clone());
         }
 
-        self.track_hierarchy_subscribers.notify(id, event);
+        self.subscribers.track_hierarchy.notify(id, event);
     }
 
     fn add_track_ancestor(&mut self, track_id: TrackId, ancestor_id: TrackId) {
@@ -432,7 +437,7 @@ impl Backend {
             start: item.real_start,
             end: item.real_end,
         };
-        self.track_subscribers.notify(id, event);
+        self.subscribers.track.notify(id, event);
 
         Ok(item_id)
     }
@@ -450,7 +455,7 @@ impl Backend {
         track.items.remove(item_id);
 
         let event = TrackEvent::ItemRemoved { id: item_id };
-        self.track_subscribers.notify(id, event);
+        self.subscribers.track.notify(id, event);
 
         Ok(())
     }
@@ -477,7 +482,7 @@ impl Backend {
             id: item_id,
             new_start: item.real_start,
         };
-        self.track_subscribers.notify(id, event);
+        self.subscribers.track.notify(id, event);
 
         Ok(())
     }
@@ -506,7 +511,7 @@ impl Backend {
             id: item_id,
             new_duration,
         };
-        self.track_subscribers.notify(id, event);
+        self.subscribers.track.notify(id, event);
 
         Ok(())
     }

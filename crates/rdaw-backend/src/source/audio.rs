@@ -1,4 +1,5 @@
-use rdaw_api::{AudioSourceId, BlobId};
+use rdaw_api::blob::BlobId;
+use rdaw_api::source::AudioSourceId;
 use rdaw_core::time::RealTime;
 
 use crate::{Object, Uuid};

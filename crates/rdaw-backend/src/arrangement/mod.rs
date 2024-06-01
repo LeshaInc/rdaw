@@ -1,4 +1,6 @@
-use rdaw_api::{ArrangementId, TempoMapId, TrackId};
+use rdaw_api::arrangement::ArrangementId;
+use rdaw_api::tempo_map::TempoMapId;
+use rdaw_api::track::TrackId;
 
 use crate::{Hub, Object, Uuid};
 

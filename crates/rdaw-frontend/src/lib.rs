@@ -13,7 +13,8 @@ use floem::views::Decorators;
 use floem::{IntoView, View};
 use futures_lite::future::block_on;
 use futures_lite::StreamExt;
-use rdaw_api::{Backend, BoxStream, TrackId};
+use rdaw_api::track::TrackId;
+use rdaw_api::{Backend, BoxStream};
 use rdaw_ui_kit::Theme;
 
 pub fn app_view<B: Backend>(master_track: TrackId) -> impl IntoView {

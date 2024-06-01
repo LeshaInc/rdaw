@@ -1,4 +1,5 @@
-use rdaw_api::{BeatTime, TempoMapId, Time};
+use rdaw_api::tempo_map::TempoMapId;
+use rdaw_api::time::{BeatTime, Time};
 use rdaw_core::time::RealTime;
 
 use crate::{Object, Uuid};

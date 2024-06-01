@@ -1,63 +1,14 @@
-use rdaw_api::{ItemId, TempoMapId, Time, TrackId, TrackItem, TrackItemId};
-use rdaw_core::collections::HashSet;
+use rdaw_api::item::ItemId;
+use rdaw_api::time::Time;
+use rdaw_api::track::{TrackItem, TrackItemId};
 use rdaw_core::time::RealTime;
+use rdaw_core::Uuid;
 use rstar::{RTree, RTreeObject, AABB};
 use slotmap::SlotMap;
 
-use crate::{Hub, Object, TempoMap, Uuid};
-
-#[derive(Debug, Clone)]
-pub struct Track {
-    uuid: Uuid,
-    pub name: String,
-    pub links: TrackLinks,
-    pub items: TrackItems,
-    pub tempo_map_id: TempoMapId,
-}
-
-impl Track {
-    pub fn new(tempo_map_id: TempoMapId, name: String) -> Track {
-        Track {
-            uuid: Uuid::new_v4(),
-            name,
-            links: TrackLinks::default(),
-            items: TrackItems::new(),
-            tempo_map_id,
-        }
-    }
-}
-
-impl Object for Track {
-    type Id = TrackId;
-
-    fn uuid(&self) -> Uuid {
-        self.uuid
-    }
-
-    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
-        callback(self.uuid);
-
-        self.links.trace(hub, callback);
-        self.items.trace(hub, callback);
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct TrackLinks {
-    pub children: Vec<TrackId>,
-    pub ancestors: HashSet<TrackId>,
-    pub direct_ancestors: HashSet<TrackId>,
-}
-
-impl TrackLinks {
-    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
-        for &child_id in &self.children {
-            if let Some(child) = hub.tracks.get(child_id) {
-                child.trace(hub, callback);
-            }
-        }
-    }
-}
+use crate::storage::Hub;
+use crate::tempo_map::TempoMap;
+use crate::Object;
 
 #[derive(Debug, Clone, Default)]
 pub struct TrackItems {
@@ -159,7 +110,7 @@ impl TrackItems {
         });
     }
 
-    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
+    pub fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
         for item in self.items.values() {
             match item.inner {
                 ItemId::Audio(id) => {
@@ -197,7 +148,7 @@ impl RTreeObject for TreeItem {
 mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use rdaw_api::AudioItemId;
+    use rdaw_api::item::AudioItemId;
     use slotmap::KeyData;
 
     use super::*;
@@ -210,11 +161,7 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let tempo_map = TempoMap {
-            beats_per_minute: 120.0,
-            beats_per_bar: 4,
-        };
-
+        let tempo_map = TempoMap::new(120.0, 4);
         let mut items = TrackItems::default();
 
         let inner = item_id();
@@ -248,11 +195,7 @@ mod tests {
 
     #[test]
     fn test_range() {
-        let tempo_map = TempoMap {
-            beats_per_minute: 120.0,
-            beats_per_bar: 4,
-        };
-
+        let tempo_map = TempoMap::new(120.0, 4);
         let mut items = TrackItems::default();
 
         let real_0s = Time::Real(RealTime::from_secs_f64(0.0));

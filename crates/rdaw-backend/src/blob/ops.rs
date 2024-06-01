@@ -1,12 +1,10 @@
-use std::fmt;
 use std::path::PathBuf;
 
-use blake3::Hash;
-use rdaw_api::{BlobId, BlobOperations, Error, Result};
-use rdaw_core::collections::HashMap;
-use rdaw_object::Blob;
+use rdaw_api::blob::{BlobId, BlobOperations};
+use rdaw_api::{Error, Result};
 use tracing::instrument;
 
+use super::Blob;
 use crate::{Backend, BackendHandle};
 
 crate::dispatch::define_dispatch_ops! {
@@ -53,22 +51,5 @@ impl Backend {
         let id = self.hub.blobs.insert(blob);
 
         Ok(id)
-    }
-}
-
-#[derive(Default)]
-pub struct BlobCache {
-    map: HashMap<Hash, Vec<u8>>,
-}
-
-impl BlobCache {
-    pub fn insert(&mut self, hash: Hash, data: Vec<u8>) {
-        self.map.insert(hash, data);
-    }
-}
-
-impl fmt::Debug for BlobCache {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BlobCache").finish_non_exhaustive()
     }
 }

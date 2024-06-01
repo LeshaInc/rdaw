@@ -1,10 +1,11 @@
-use rdaw_api::{AudioItemId, AudioSourceId};
+use rdaw_api::item::AudioItemId;
+use rdaw_api::source::AudioSourceId;
 
 use crate::{Hub, Object, Uuid};
 
 #[derive(Debug, Clone)]
 pub struct AudioItem {
-    pub uuid: Uuid,
+    uuid: Uuid,
     pub source: AudioSourceId,
 }
 

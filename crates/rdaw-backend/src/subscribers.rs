@@ -4,10 +4,24 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures_lite::Stream;
+use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackId};
 use rdaw_core::collections::HashMap;
 use rdaw_core::sync::spsc::{self, Receiver, Sender};
 
 const CAPACITY: usize = 8;
+
+#[derive(Debug, Default)]
+pub struct SubscribersHub {
+    pub track: Subscribers<TrackId, TrackEvent>,
+    pub track_hierarchy: Subscribers<TrackId, TrackHierarchyEvent>,
+}
+
+impl SubscribersHub {
+    pub async fn update(&mut self) {
+        self.track.update().await;
+        self.track_hierarchy.update().await;
+    }
+}
 
 #[derive(Debug)]
 pub struct Subscribers<K, E> {

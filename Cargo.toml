@@ -11,7 +11,6 @@ rdaw-audio = { path = "crates/rdaw-audio", version = "0.1.0" }
 rdaw-backend = { path = "crates/rdaw-backend", version = "0.1.0" }
 rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
 rdaw-frontend = { path = "crates/rdaw-frontend", version = "0.1.0" }
-rdaw-object = { path = "crates/rdaw-object", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
 rdaw-ui-kit = { path = "crates/rdaw-ui-kit", version = "0.1.0" }
 

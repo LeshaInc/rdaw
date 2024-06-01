@@ -1,27 +1,19 @@
-mod arrangement;
-mod beat;
-mod blob;
+pub mod arrangement;
+pub mod blob;
 mod error;
-mod item;
-mod source;
-mod tempo_map;
-mod track;
+pub mod item;
+pub mod source;
+pub mod tempo_map;
+pub mod time;
+pub mod track;
 
 use std::pin::Pin;
 
 use futures_lite::Stream;
 
-pub use self::arrangement::ArrangementId;
-pub use self::beat::{BeatTime, Time};
-pub use self::blob::{BlobId, BlobOperations};
+use self::blob::BlobOperations;
 pub use self::error::{Error, Result};
-pub use self::item::{AudioItemId, ItemId};
-pub use self::source::{AudioSourceId, SourceId};
-pub use self::tempo_map::TempoMapId;
-pub use self::track::{
-    TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId, TrackNode,
-    TrackOperations,
-};
+use self::track::TrackOperations;
 
 pub trait Backend: TrackOperations + BlobOperations + Sync + 'static {}
 

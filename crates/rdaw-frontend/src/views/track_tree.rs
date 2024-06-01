@@ -9,7 +9,8 @@ use floem::views::{
     VirtualItemSize, VirtualVector,
 };
 use floem::{IntoView, View};
-use rdaw_api::{Backend, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
+use rdaw_api::track::{TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
+use rdaw_api::Backend;
 use rdaw_core::collections::{HashMap, HashSet, ImVec};
 
 use crate::api;
