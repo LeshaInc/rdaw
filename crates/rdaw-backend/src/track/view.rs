@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple() {
+    fn simple() {
         let tempo_map = TempoMap::new(120.0);
         let mut items = SlotMap::default();
         let mut view = TrackView::default();
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn test_range() {
+    fn range() {
         let tempo_map = TempoMap::new(120.0);
         let mut items = SlotMap::default();
         let mut view = TrackView::default();

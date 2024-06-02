@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_seq() {
+    fn seq() {
         let (mut sender, mut receiver) = channel(4);
 
         assert_eq!(sender.send(1), Ok(()));
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_slice_seq() {
+    fn slice_seq() {
         let (mut sender, mut receiver) = channel(4);
 
         assert!(sender.send_slice(&[1, 2, 3, 4]).is_ok());
@@ -524,7 +524,7 @@ mod tests {
         assert_eq!(receiver.recv(), Err(RecvError::Closed));
     }
 
-    fn concurrent() {
+    fn do_concurrent() {
         let (mut sender, mut receiver) = channel(1);
 
         let t1 = thread::spawn(move || {
@@ -543,13 +543,13 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_concurrent() {
-        concurrent();
+    fn concurrent() {
+        do_concurrent();
     }
 
     #[test]
     #[cfg(loom)]
-    fn test_concurrent() {
-        loom::model(concurrent);
+    fn concurrent() {
+        loom::model(do_concurrent);
     }
 }

@@ -591,7 +591,7 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_sequential_copy() {
+    fn sequential_copy() {
         let (mut producer, mut consumer) = buffer(4);
 
         assert_eq!(producer.push(0), Ok(()));
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_sequential_zst() {
+    fn sequential_zst() {
         let (mut producer, mut consumer) = buffer(4);
 
         assert_eq!(producer.push(()), Ok(()));
@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_sequential_drop() {
+    fn sequential_drop() {
         let (mut producer, mut consumer) = buffer::<String>(4);
 
         assert_eq!(producer.push("0".into()), Ok(()));
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_push_pop_slice() {
+    fn push_pop_slice() {
         let (mut producer, mut consumer) = buffer(4);
 
         assert!(producer.push_slice(&[1, 2, 3, 4]).is_ok());
@@ -679,7 +679,7 @@ mod tests {
         assert_eq!(consumer.pop(), Err(PopError::Empty));
     }
 
-    fn parallel_drop() {
+    fn do_parallel_drop() {
         let (mut producer, mut consumer) = buffer::<String>(2);
 
         let expected_vec = vec!["1".to_string(), "2".to_string(), "3".to_string()];
@@ -722,13 +722,13 @@ mod tests {
 
     #[test]
     #[cfg(not(loom))]
-    fn test_parallel_drop() {
-        parallel_drop();
+    fn parallel_drop() {
+        do_parallel_drop();
     }
 
     #[test]
     #[cfg(loom)]
-    fn loom_test_parallel_drop() {
-        loom::model(parallel_drop);
+    fn parallel_drop() {
+        loom::model(do_parallel_drop);
     }
 }
