@@ -227,7 +227,7 @@ unsafe impl Send for Registration {}
 unsafe impl Sync for Registration {}
 
 struct Reactor {
-    master_futex: AtomicU32,
+    main_futex: AtomicU32,
     actions: SegQueue<Action>,
 }
 
@@ -235,7 +235,7 @@ impl Reactor {
     #[cold]
     fn init() -> Arc<Reactor> {
         let reactor = Arc::new(Reactor {
-            master_futex: AtomicU32::new(0),
+            main_futex: AtomicU32::new(0),
             actions: SegQueue::new(),
         });
 
@@ -256,12 +256,12 @@ impl Reactor {
 
     fn register(&self, registration: Registration) {
         self.actions.push(Action::Register(registration));
-        futex_wake(&self.master_futex, 1).unwrap();
+        futex_wake(&self.main_futex, 1).unwrap();
     }
 
     fn unregister(&self, futex: *const AtomicU32) {
         self.actions.push(Action::Unregister { futex });
-        futex_wake(&self.master_futex, 1).unwrap();
+        futex_wake(&self.main_futex, 1).unwrap();
     }
 
     fn run(&self) {
@@ -278,7 +278,7 @@ impl Reactor {
             waiters.clear();
             waiters.push(FutexWaiter {
                 val: 0,
-                uaddr: &self.master_futex as *const _ as usize as u64,
+                uaddr: &self.main_futex as *const _ as usize as u64,
                 flags: 2, // FUTEX_32
                 __reserved: 0,
             });

@@ -101,7 +101,7 @@ generate_methods! {
 
     fn set_arrangement_name(id: ArrangementId, name: String);
 
-    fn get_arrangement_master_track(id: ArrangementId) -> TrackId;
+    fn get_arrangement_main_track(id: ArrangementId) -> TrackId;
 
     fn get_arrangement_tempo_map(id: ArrangementId) -> TempoMapId;
 }

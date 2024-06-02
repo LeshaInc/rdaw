@@ -36,7 +36,7 @@ crate::dispatch::define_dispatch_ops! {
         name: String,
     ) -> Result<()>;
 
-    GetArrangementMasterTrack => get_arrangement_master_track(
+    GetArrangementMainTrack => get_arrangement_main_track(
         id: ArrangementId,
     ) -> Result<TrackId>;
 
@@ -57,10 +57,10 @@ impl Backend {
         let tempo_map = TempoMap::new(120.0, 4);
         let tempo_map_id = self.hub.tempo_maps.insert(tempo_map);
 
-        let master_track = Track::new(tempo_map_id, "Master".into());
-        let master_track_id = self.hub.tracks.insert(master_track);
+        let main_track = Track::new(tempo_map_id, "main".into());
+        let main_track_id = self.hub.tracks.insert(main_track);
 
-        let arrangement = Arrangement::new(tempo_map_id, master_track_id, String::new());
+        let arrangement = Arrangement::new(tempo_map_id, main_track_id, String::new());
         let arrangement_id = self.hub.arrangements.insert(arrangement);
 
         let mut id_str = format!("{:?}", arrangement_id.data());
@@ -103,9 +103,9 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_arrangement_master_track(&self, id: ArrangementId) -> Result<TrackId> {
+    pub fn get_arrangement_main_track(&self, id: ArrangementId) -> Result<TrackId> {
         let arrangement = self.hub.arrangements.get(id).ok_or(Error::InvalidId)?;
-        Ok(arrangement.master_track_id)
+        Ok(arrangement.main_track_id)
     }
 
     #[instrument(skip_all, err)]
