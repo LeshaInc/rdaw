@@ -281,12 +281,12 @@ impl Backend {
         child_id: TrackId,
         index: usize,
     ) -> Result<()> {
-        if parent_id == child_id {
-            return Err(Error::RecursiveTrack);
+        if !self.hub.tracks.contains_id(parent_id) || !self.hub.tracks.contains_id(child_id) {
+            return Err(Error::InvalidId);
         }
 
-        if !self.hub.tracks.contains_id(child_id) {
-            return Err(Error::InvalidId);
+        if parent_id == child_id {
+            return Err(Error::RecursiveTrack);
         }
 
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;

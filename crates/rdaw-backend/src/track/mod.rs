@@ -1,4 +1,6 @@
 mod ops;
+#[cfg(test)]
+mod tests;
 mod view;
 
 use rdaw_api::item::ItemId;

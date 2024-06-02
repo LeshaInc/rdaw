@@ -114,7 +114,7 @@ impl TrackViewItem {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrackEvent {
     NameChanged { new_name: String },
 }
@@ -187,7 +187,7 @@ pub struct TrackNode {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TrackHierarchyEvent {
     ChildrenChanged {
         id: TrackId,
