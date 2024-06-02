@@ -13,12 +13,12 @@ use floem::views::Decorators;
 use floem::{IntoView, View};
 use futures_lite::future::block_on;
 use futures_lite::StreamExt;
-use rdaw_api::track::TrackId;
+use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::{Backend, BoxStream};
 use rdaw_ui_kit::Theme;
 
-pub fn app_view<B: Backend>(main_track: TrackId) -> impl IntoView {
-    views::track_tree::<B>(main_track)
+pub fn app_view<B: Backend>(main_arrangement: ArrangementId) -> impl IntoView {
+    views::arrangement::<B>(main_arrangement)
         .style(|s| s.width_full().height_full())
         .window_scale(move || 1.0)
 }
@@ -93,10 +93,12 @@ pub fn run<B: Backend>(backend: B) {
         })
     });
 
-    let main_track = block_on(async move { backend.create_track().await }).unwrap();
+    let main_arrangement = block_on(async move { backend.create_arrangement().await }).unwrap();
 
     floem::launch(move || {
-        let view = app_view::<B>(main_track).keyboard_navigatable().into_view();
+        let view = app_view::<B>(main_arrangement)
+            .keyboard_navigatable()
+            .into_view();
         let id = view.id();
         view.on_key_down(Key::Named(NamedKey::F11), Modifiers::empty(), move |_| {
             id.inspect()

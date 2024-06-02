@@ -5,16 +5,17 @@ use floem::reactive::{batch, create_memo, RwSignal};
 use floem::style::CursorStyle;
 use floem::taffy::{Display, Position};
 use floem::views::{
-    container, empty, h_stack, scroll, v_stack, virtual_stack, Decorators, VirtualDirection,
-    VirtualItemSize, VirtualVector,
+    container, dyn_container, empty, h_stack, scroll, v_stack, virtual_stack, Decorators,
+    VirtualDirection, VirtualItemSize, VirtualVector,
 };
 use floem::{IntoView, View};
+use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::track::{TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
 use rdaw_api::Backend;
 use rdaw_core::collections::{HashMap, HashSet, ImVec};
 
 use crate::api;
-use crate::views::{track_arrangement, track_control};
+use crate::views::{track_control, track_items};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum DropLocation {
@@ -35,7 +36,21 @@ struct State {
     track_heights: RwSignal<HashMap<TrackNode, RwSignal<f64>>>,
 }
 
-pub fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
+pub fn arrangement<B: Backend>(id: ArrangementId) -> impl IntoView {
+    let main_track = RwSignal::new(None);
+
+    api::get_arrangement_main_track::<B>(id, move |id| {
+        main_track.set(Some(id));
+    });
+
+    dyn_container(move || match main_track.get() {
+        Some(id) => track_tree::<B>(id).into_any(),
+        None => empty().into_any(),
+    })
+    .style(|s| s.width_full().height_full())
+}
+
+fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
     let state = State {
         selection: RwSignal::new(None),
         transitive_selection: RwSignal::new(HashSet::default()),
@@ -83,15 +98,15 @@ pub fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
         VirtualItemSize::Fn(Box::new(get_height)),
         move || order.get(),
         move |node| *node,
-        move |node| control_node::<B>(state, node),
+        move |node| track_control_node::<B>(state, node),
     );
 
-    let arrangement_tree = virtual_stack(
+    let items_tree = virtual_stack(
         VirtualDirection::Vertical,
         VirtualItemSize::Fn(Box::new(move |(_, node)| get_height(node))),
         move || order.get().enumerate(),
         move |(idx, node)| (*node, idx % 2 == 0),
-        move |(idx, node)| arrangement_node::<B>(state, node, idx % 2 == 0),
+        move |(idx, node)| track_items_node::<B>(state, node, idx % 2 == 0),
     );
 
     let scroll_delta = RwSignal::new(Vec2::ZERO);
@@ -99,7 +114,7 @@ pub fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
     scroll(
         h_stack((
             control_tree.style(|s| s.width(400.0)),
-            arrangement_tree.style(|s| s.flex_grow(1.0)).on_event(
+            items_tree.style(|s| s.flex_grow(1.0)).on_event(
                 EventListener::PointerWheel,
                 move |ev| {
                     let Event::PointerWheel(ev) = ev else {
@@ -117,11 +132,12 @@ pub fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
         ))
         .style(|s| s.width_full()),
     )
+    .style(|s| s.width_full().height_full())
     .scroll_delta(move || scroll_delta.get())
     .debug_name("TrackTree")
 }
 
-fn control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
+fn track_control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
     let is_resizing = RwSignal::new(false);
     let prev_resizing_y = RwSignal::new(None);
 
@@ -436,7 +452,7 @@ fn control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
     })
 }
 
-fn arrangement_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
+fn track_items_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
     let track_height = create_memo(move |_| {
         state.track_heights.with(|v| {
             v.get(&node)
@@ -445,7 +461,7 @@ fn arrangement_node<B: Backend>(state: State, node: TrackNode, is_even: bool) ->
         })
     });
 
-    container(track_arrangement::<B>(node.id, is_even))
-        .debug_name("TrackArrangementNode")
+    container(track_items::<B>(node.id, is_even))
+        .debug_name("TrackItemsNode")
         .style(move |s| s.width_full().height(track_height.get()))
 }

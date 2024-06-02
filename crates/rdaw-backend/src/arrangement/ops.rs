@@ -57,7 +57,7 @@ impl Backend {
         let tempo_map = TempoMap::new(120.0, 4);
         let tempo_map_id = self.hub.tempo_maps.insert(tempo_map);
 
-        let main_track = Track::new(tempo_map_id, "main".into());
+        let main_track = Track::new(tempo_map_id, "Main Track".into());
         let main_track_id = self.hub.tracks.insert(main_track);
 
         let arrangement = Arrangement::new(tempo_map_id, main_track_id, String::new());
