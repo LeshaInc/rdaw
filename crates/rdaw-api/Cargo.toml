@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 rdaw-core.workspace = true
 
+fixed.workspace = true
 futures-lite.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true

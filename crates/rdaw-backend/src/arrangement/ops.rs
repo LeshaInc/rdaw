@@ -54,7 +54,7 @@ impl Backend {
 
     #[instrument(skip_all, err)]
     pub fn create_arrangement(&mut self) -> Result<ArrangementId> {
-        let tempo_map = TempoMap::new(120.0, 4);
+        let tempo_map = TempoMap::new(120.0);
         let tempo_map_id = self.hub.tempo_maps.insert(tempo_map);
 
         let main_track = Track::new(tempo_map_id, "Main Track".into());

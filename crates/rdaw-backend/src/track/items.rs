@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let tempo_map = TempoMap::new(120.0, 4);
+        let tempo_map = TempoMap::new(120.0);
         let mut items = TrackItems::default();
 
         let inner = item_id();
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_range() {
-        let tempo_map = TempoMap::new(120.0, 4);
+        let tempo_map = TempoMap::new(120.0);
         let mut items = TrackItems::default();
 
         let real_0s = Time::Real(RealTime::from_secs_f64(0.0));

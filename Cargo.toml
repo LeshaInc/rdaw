@@ -22,6 +22,7 @@ blake3 = "1.5.1"
 bumpalo = "3.16.0"
 crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
+fixed = "1.27.0"
 floem = { git = "https://github.com/lapce/floem.git", rev = "c74beb142dd2611ff5a2f648e3bdb4b9437c9dc7" }
 futures-lite = "2.3.0"
 im = "15.1.0"

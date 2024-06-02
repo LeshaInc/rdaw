@@ -119,7 +119,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn create_track(&mut self) -> Result<TrackId> {
         // TODO: remove this
-        let tempo_map_id = self.hub.tempo_maps.insert(TempoMap::new(120.0, 4));
+        let tempo_map_id = self.hub.tempo_maps.insert(TempoMap::new(120.0));
 
         let track = Track::new(tempo_map_id, String::new());
         let id = self.hub.tracks.insert(track);
