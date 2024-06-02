@@ -66,7 +66,10 @@ fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
     });
 
     api::subscribe_track_hierarchy::<B>(root, move |event| {
-        let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event;
+        let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event else {
+            return;
+        };
+
         state.hierarchy.update(|v| {
             v.set_children(id, new_children.into_iter().collect());
         });

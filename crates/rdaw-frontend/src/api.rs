@@ -9,6 +9,7 @@ use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
+    TrackViewEvent, TrackViewId,
 };
 use rdaw_api::{Backend, Error};
 
@@ -123,6 +124,9 @@ generate_methods! {
     #[sub]
     fn subscribe_track_hierarchy(id: TrackId) -> TrackHierarchyEvent;
 
+    #[sub]
+    fn subscribe_track_view(view_id: TrackViewId) -> TrackViewEvent;
+
     fn get_track_name(id: TrackId) -> String;
 
     fn set_track_name(id: TrackId, name: String);
@@ -149,30 +153,30 @@ generate_methods! {
     fn remove_track_child(parent: TrackId, index: usize);
 
     fn get_track_range(
-        id: TrackId,
+        view_id: TrackViewId,
         start: Option<Time>,
         end: Option<Time>,
     ) -> Vec<TrackItemId>;
 
     fn add_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: ItemId,
         position: Time,
         duration: Time,
     ) -> TrackItemId;
 
-    fn get_track_item(id: TrackId, item_id: TrackItemId) -> TrackItem;
+    fn get_track_item(view_id: TrackViewId, item_id: TrackItemId) -> TrackItem;
 
-    fn remove_track_item(id: TrackId, item_id: TrackItemId);
+    fn remove_track_item(view_id: TrackViewId, item_id: TrackItemId);
 
     fn move_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_position: Time,
     );
 
     fn resize_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_duration: Time,
     );

@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 
 use futures_lite::Stream;
 use rdaw_api::arrangement::{ArrangementEvent, ArrangementId};
-use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackId};
+use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackId, TrackViewEvent, TrackViewId};
 use rdaw_core::collections::HashMap;
 use rdaw_core::sync::spsc::{self, Receiver, Sender};
 
@@ -16,12 +16,15 @@ pub struct SubscribersHub {
     pub arrangement: Subscribers<ArrangementId, ArrangementEvent>,
     pub track: Subscribers<TrackId, TrackEvent>,
     pub track_hierarchy: Subscribers<TrackId, TrackHierarchyEvent>,
+    pub track_view: Subscribers<TrackViewId, TrackViewEvent>,
 }
 
 impl SubscribersHub {
     pub async fn update(&mut self) {
+        self.arrangement.update().await;
         self.track.update().await;
         self.track_hierarchy.update().await;
+        self.track_view.update().await;
     }
 }
 

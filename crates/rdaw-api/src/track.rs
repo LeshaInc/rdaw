@@ -1,6 +1,7 @@
 use rdaw_core::collections::{HashMap, ImVec};
 use rdaw_core::time::RealTime;
 
+use crate::arrangement::ArrangementId;
 use crate::item::ItemId;
 use crate::time::Time;
 use crate::{BoxStream, Result};
@@ -9,6 +10,12 @@ slotmap::new_key_type! {
     pub struct TrackId;
 
     pub struct TrackItemId;
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct TrackViewId {
+    pub track_id: TrackId,
+    pub arrangement_id: ArrangementId,
 }
 
 #[trait_variant::make(Send)]
@@ -23,6 +30,9 @@ pub trait TrackOperations {
         &self,
         root: TrackId,
     ) -> Result<BoxStream<TrackHierarchyEvent>>;
+
+    async fn subscribe_track_view(&self, view_id: TrackViewId)
+        -> Result<BoxStream<TrackViewEvent>>;
 
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 
@@ -49,33 +59,34 @@ pub trait TrackOperations {
 
     async fn get_track_range(
         &self,
-        id: TrackId,
+        view_id: TrackViewId,
         start: Option<Time>,
         end: Option<Time>,
     ) -> Result<Vec<TrackItemId>>;
 
     async fn add_track_item(
         &self,
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: ItemId,
         position: Time,
         duration: Time,
     ) -> Result<TrackItemId>;
 
-    async fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem>;
+    async fn get_track_item(&self, view_id: TrackViewId, item_id: TrackItemId)
+        -> Result<TrackItem>;
 
-    async fn remove_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<()>;
+    async fn remove_track_item(&self, view_id: TrackViewId, item_id: TrackItemId) -> Result<()>;
 
     async fn move_track_item(
         &self,
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_position: Time,
     ) -> Result<()>;
 
     async fn resize_track_item(
         &self,
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()>;
@@ -96,27 +107,10 @@ impl TrackItem {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum TrackEvent {
-    NameChanged {
-        new_name: String,
-    },
-    ItemAdded {
-        id: TrackItemId,
-        start: RealTime,
-        end: RealTime,
-    },
-    ItemRemoved {
-        id: TrackItemId,
-    },
-    ItemMoved {
-        id: TrackItemId,
-        new_start: RealTime,
-    },
-    ItemResized {
-        id: TrackItemId,
-        new_duration: RealTime,
-    },
+    NameChanged { new_name: String },
 }
 
 #[derive(Debug, Clone)]
@@ -186,10 +180,32 @@ pub struct TrackNode {
     pub parent: Option<TrackId>,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum TrackHierarchyEvent {
     ChildrenChanged {
         id: TrackId,
         new_children: ImVec<TrackId>,
+    },
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub enum TrackViewEvent {
+    ItemAdded {
+        id: TrackItemId,
+        start: RealTime,
+        end: RealTime,
+    },
+    ItemRemoved {
+        id: TrackItemId,
+    },
+    ItemMoved {
+        id: TrackItemId,
+        new_start: RealTime,
+    },
+    ItemResized {
+        id: TrackItemId,
+        new_duration: RealTime,
     },
 }

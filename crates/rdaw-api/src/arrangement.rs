@@ -24,6 +24,7 @@ pub trait ArrangementOperations {
     async fn get_arrangement_tempo_map(&self, id: ArrangementId) -> Result<TempoMapId>;
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum ArrangementEvent {
     NameChanged { new_name: String },

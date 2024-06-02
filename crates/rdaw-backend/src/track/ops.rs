@@ -2,7 +2,7 @@ use rdaw_api::item::ItemId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
-    TrackOperations,
+    TrackOperations, TrackViewEvent, TrackViewId,
 };
 use rdaw_api::{BoxStream, Error, Result};
 use slotmap::Key;
@@ -32,6 +32,10 @@ crate::dispatch::define_dispatch_ops! {
     SubscribeTrackHierarchy => subscribe_track_hierarchy(
         root: TrackId,
     ) -> Result<BoxStream<TrackHierarchyEvent>>;
+
+    SubscribeTrackView => subscribe_track_view(
+        view_id: TrackViewId
+    ) -> Result<BoxStream<TrackViewEvent>>;
 
     GetTrackName => get_track_name(
         id: TrackId,
@@ -74,36 +78,36 @@ crate::dispatch::define_dispatch_ops! {
     ) -> Result<()>;
 
     GetTrackRange => get_track_range(
-        id: TrackId,
+        view_id: TrackViewId,
         start: Option<Time>,
         end: Option<Time>,
     ) -> Result<Vec<TrackItemId>>;
 
     AddTrackItem => add_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: ItemId,
         position: Time,
         duration: Time,
     ) -> Result<TrackItemId>;
 
     GetTrackItem => get_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
     ) -> Result<TrackItem>;
 
     RemoveTrackItem => remove_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
     ) -> Result<()>;
 
     MoveTrackItem => move_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_position: Time,
     ) -> Result<()>;
 
     ResizeTrackItem => resize_track_item(
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()>;
@@ -153,6 +157,22 @@ impl Backend {
         }
 
         Ok(Box::pin(self.subscribers.track_hierarchy.subscribe(id)))
+    }
+
+    #[instrument(skip_all, err)]
+    pub fn subscribe_track_view(
+        &mut self,
+        view_id: TrackViewId,
+    ) -> Result<BoxStream<TrackViewEvent>> {
+        if !self.hub.arrangements.contains_id(view_id.arrangement_id) {
+            return Err(Error::InvalidId);
+        }
+
+        if !self.hub.tracks.contains_id(view_id.track_id) {
+            return Err(Error::InvalidId);
+        }
+
+        Ok(Box::pin(self.subscribers.track_view.subscribe(view_id)))
     }
 
     #[instrument(skip_all, err)]
@@ -392,11 +412,15 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn get_track_range(
         &self,
-        id: TrackId,
+        view_id: TrackViewId,
         start: Option<Time>,
         end: Option<Time>,
     ) -> Result<Vec<TrackItemId>> {
-        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+        let track = self
+            .hub
+            .tracks
+            .get(view_id.track_id)
+            .ok_or(Error::InvalidId)?;
 
         let tempo_map = self
             .hub
@@ -416,12 +440,16 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn add_track_item(
         &mut self,
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: ItemId,
         position: Time,
         duration: Time,
     ) -> Result<TrackItemId> {
-        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        let track = self
+            .hub
+            .tracks
+            .get_mut(view_id.track_id)
+            .ok_or(Error::InvalidId)?;
 
         let tempo_map = self
             .hub
@@ -432,30 +460,38 @@ impl Backend {
         let item_id = track.items.insert(tempo_map, item_id, position, duration);
 
         let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
-        let event = TrackEvent::ItemAdded {
+        let event = TrackViewEvent::ItemAdded {
             id: item_id,
             start: item.real_start,
             end: item.real_end,
         };
-        self.subscribers.track.notify(id, event);
+        self.subscribers.track_view.notify(view_id, event);
 
         Ok(item_id)
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_track_item(&self, id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
-        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+    pub fn get_track_item(&self, view_id: TrackViewId, item_id: TrackItemId) -> Result<TrackItem> {
+        let track = self
+            .hub
+            .tracks
+            .get(view_id.track_id)
+            .ok_or(Error::InvalidId)?;
         let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
         Ok(item.clone())
     }
 
     #[instrument(skip_all, err)]
-    pub fn remove_track_item(&mut self, id: TrackId, item_id: TrackItemId) -> Result<()> {
-        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+    pub fn remove_track_item(&mut self, view_id: TrackViewId, item_id: TrackItemId) -> Result<()> {
+        let track = self
+            .hub
+            .tracks
+            .get_mut(view_id.track_id)
+            .ok_or(Error::InvalidId)?;
         track.items.remove(item_id);
 
-        let event = TrackEvent::ItemRemoved { id: item_id };
-        self.subscribers.track.notify(id, event);
+        let event = TrackViewEvent::ItemRemoved { id: item_id };
+        self.subscribers.track_view.notify(view_id, event);
 
         Ok(())
     }
@@ -463,11 +499,15 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn move_track_item(
         &mut self,
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_position: Time,
     ) -> Result<()> {
-        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        let track = self
+            .hub
+            .tracks
+            .get_mut(view_id.track_id)
+            .ok_or(Error::InvalidId)?;
 
         let tempo_map = self
             .hub
@@ -478,11 +518,11 @@ impl Backend {
         track.items.move_item(tempo_map, item_id, new_position);
 
         let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
-        let event = TrackEvent::ItemMoved {
+        let event = TrackViewEvent::ItemMoved {
             id: item_id,
             new_start: item.real_start,
         };
-        self.subscribers.track.notify(id, event);
+        self.subscribers.track_view.notify(view_id, event);
 
         Ok(())
     }
@@ -490,11 +530,15 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn resize_track_item(
         &mut self,
-        id: TrackId,
+        view_id: TrackViewId,
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()> {
-        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        let track = self
+            .hub
+            .tracks
+            .get_mut(view_id.track_id)
+            .ok_or(Error::InvalidId)?;
 
         let tempo_map = self
             .hub
@@ -507,11 +551,11 @@ impl Backend {
         let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
         let new_duration = item.real_duration();
 
-        let event = TrackEvent::ItemResized {
+        let event = TrackViewEvent::ItemResized {
             id: item_id,
             new_duration,
         };
-        self.subscribers.track.notify(id, event);
+        self.subscribers.track_view.notify(view_id, event);
 
         Ok(())
     }
