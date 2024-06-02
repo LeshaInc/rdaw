@@ -8,6 +8,7 @@ pub mod subscribers;
 pub mod tempo_map;
 pub mod track;
 
+use arrangement::ArrangementOperation;
 use async_channel::{Receiver, Sender};
 use rdaw_core::Uuid;
 use slotmap::Key;
@@ -57,8 +58,9 @@ impl Backend {
 
     pub fn dispatch(&mut self, operation: Operation) {
         match operation {
-            Operation::Track(op) => self.dispatch_track_operation(op),
+            Operation::Arrangement(op) => self.dispatch_arrangement_operation(op),
             Operation::Blob(op) => self.dispatch_blob_operation(op),
+            Operation::Track(op) => self.dispatch_track_operation(op),
         }
     }
 
@@ -92,18 +94,25 @@ pub struct BackendHandle {
 impl rdaw_api::Backend for BackendHandle {}
 
 pub enum Operation {
-    Track(TrackOperation),
+    Arrangement(ArrangementOperation),
     Blob(BlobOperation),
+    Track(TrackOperation),
 }
 
-impl From<TrackOperation> for Operation {
-    fn from(op: TrackOperation) -> Operation {
-        Operation::Track(op)
+impl From<ArrangementOperation> for Operation {
+    fn from(op: ArrangementOperation) -> Operation {
+        Operation::Arrangement(op)
     }
 }
 
 impl From<BlobOperation> for Operation {
     fn from(op: BlobOperation) -> Operation {
         Operation::Blob(op)
+    }
+}
+
+impl From<TrackOperation> for Operation {
+    fn from(op: TrackOperation) -> Operation {
+        Operation::Track(op)
     }
 }

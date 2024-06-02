@@ -11,10 +11,14 @@ use std::pin::Pin;
 
 use futures_lite::Stream;
 
+use self::arrangement::ArrangementOperations;
 use self::blob::BlobOperations;
 pub use self::error::{Error, Result};
 use self::track::TrackOperations;
 
-pub trait Backend: TrackOperations + BlobOperations + Sync + 'static {}
+pub trait Backend:
+    ArrangementOperations + BlobOperations + TrackOperations + Sync + 'static
+{
+}
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;

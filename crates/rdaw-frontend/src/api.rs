@@ -2,8 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use floem::reactive::use_context;
+use rdaw_api::arrangement::{ArrangementEvent, ArrangementId};
 use rdaw_api::blob::BlobId;
 use rdaw_api::item::ItemId;
+use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
@@ -88,6 +90,29 @@ macro_rules! generate_methods {
 }
 
 generate_methods! {
+    fn list_arrangements() -> Vec<ArrangementId>;
+
+    fn create_arrangement() -> ArrangementId;
+
+    #[sub]
+    fn subscribe_arrangement(id: ArrangementId) -> ArrangementEvent;
+
+    fn get_arrangement_name(id: ArrangementId) -> String;
+
+    fn set_arrangement_name(id: ArrangementId, name: String);
+
+    fn get_arrangement_master_track(id: ArrangementId) -> TrackId;
+
+    fn get_arrangement_tempo_map(id: ArrangementId) -> TempoMapId;
+}
+
+generate_methods! {
+    fn create_internal_blob(data: Vec<u8>) -> BlobId;
+
+    fn create_external_blob(path: PathBuf) -> BlobId;
+}
+
+generate_methods! {
     fn list_tracks() -> Vec<TrackId>;
 
     fn create_track() -> TrackId;
@@ -151,10 +176,4 @@ generate_methods! {
         item_id: TrackItemId,
         new_duration: Time,
     );
-}
-
-generate_methods! {
-    fn create_internal_blob(data: Vec<u8>) -> BlobId;
-
-    fn create_external_blob(path: PathBuf) -> BlobId;
 }
