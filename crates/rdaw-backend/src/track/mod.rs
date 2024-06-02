@@ -1,12 +1,13 @@
-mod items;
 mod ops;
+mod view;
 
-use rdaw_api::tempo_map::TempoMapId;
-use rdaw_api::track::TrackId;
+use rdaw_api::item::ItemId;
+use rdaw_api::track::{TrackId, TrackItem, TrackItemId};
 use rdaw_core::collections::HashSet;
+use slotmap::SlotMap;
 
-pub use self::items::TrackItems;
 pub use self::ops::TrackOperation;
+pub use self::view::{TrackView, TrackViewCache};
 use crate::{Hub, Object, Uuid};
 
 #[derive(Debug, Clone)]
@@ -14,18 +15,16 @@ pub struct Track {
     uuid: Uuid,
     pub name: String,
     pub links: TrackLinks,
-    pub items: TrackItems,
-    pub tempo_map_id: TempoMapId,
+    pub items: SlotMap<TrackItemId, TrackItem>,
 }
 
 impl Track {
-    pub fn new(tempo_map_id: TempoMapId, name: String) -> Track {
+    pub fn new(name: String) -> Track {
         Track {
             uuid: Uuid::new_v4(),
             name,
             links: TrackLinks::default(),
-            items: TrackItems::new(),
-            tempo_map_id,
+            items: SlotMap::default(),
         }
     }
 }
@@ -39,8 +38,18 @@ impl Object for Track {
 
     fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
         callback(self.uuid);
+
         self.links.trace(hub, callback);
-        self.items.trace(hub, callback);
+
+        for item in self.items.values() {
+            match item.inner {
+                ItemId::Audio(id) => {
+                    if let Some(item) = hub.audio_items.get(id) {
+                        item.trace(hub, callback);
+                    }
+                }
+            }
+        }
     }
 }
 

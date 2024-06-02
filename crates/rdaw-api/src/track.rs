@@ -57,51 +57,57 @@ pub trait TrackOperations {
 
     async fn remove_track_child(&self, parent: TrackId, index: usize) -> Result<()>;
 
-    async fn get_track_range(
-        &self,
-        view_id: TrackViewId,
-        start: Option<Time>,
-        end: Option<Time>,
-    ) -> Result<Vec<TrackItemId>>;
+    async fn add_track_item(&self, track_id: TrackId, item: TrackItem) -> Result<TrackItemId>;
 
-    async fn add_track_item(
-        &self,
-        view_id: TrackViewId,
-        item_id: ItemId,
-        position: Time,
-        duration: Time,
-    ) -> Result<TrackItemId>;
+    async fn get_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<TrackItem>;
 
-    async fn get_track_item(&self, view_id: TrackViewId, item_id: TrackItemId)
-        -> Result<TrackItem>;
-
-    async fn remove_track_item(&self, view_id: TrackViewId, item_id: TrackItemId) -> Result<()>;
+    async fn remove_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<()>;
 
     async fn move_track_item(
         &self,
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
-        new_position: Time,
+        new_start: Time,
     ) -> Result<()>;
 
     async fn resize_track_item(
         &self,
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()>;
+
+    async fn get_track_view_item(
+        &self,
+        view_id: TrackViewId,
+        item_id: TrackItemId,
+    ) -> Result<TrackViewItem>;
+
+    async fn get_track_view_range(
+        &self,
+        view_id: TrackViewId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Result<Vec<(TrackItemId, TrackViewItem)>>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TrackItem {
     pub inner: ItemId,
-    pub position: Time,
+    pub start: Time,
+    pub duration: Time,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TrackViewItem {
+    pub inner: ItemId,
+    pub start: Time,
     pub duration: Time,
     pub real_start: RealTime,
     pub real_end: RealTime,
 }
 
-impl TrackItem {
+impl TrackViewItem {
     pub fn real_duration(&self) -> RealTime {
         self.real_end - self.real_start
     }
@@ -194,18 +200,19 @@ pub enum TrackHierarchyEvent {
 pub enum TrackViewEvent {
     ItemAdded {
         id: TrackItemId,
-        start: RealTime,
-        end: RealTime,
+        item: TrackViewItem,
     },
     ItemRemoved {
         id: TrackItemId,
     },
     ItemMoved {
         id: TrackItemId,
-        new_start: RealTime,
+        new_start: Time,
+        new_real_start: RealTime,
     },
     ItemResized {
         id: TrackItemId,
-        new_duration: RealTime,
+        new_duration: Time,
+        new_real_duration: RealTime,
     },
 }

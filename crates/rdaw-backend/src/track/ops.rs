@@ -1,15 +1,13 @@
-use rdaw_api::item::ItemId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
-    TrackOperations, TrackViewEvent, TrackViewId,
+    TrackOperations, TrackViewEvent, TrackViewId, TrackViewItem,
 };
 use rdaw_api::{BoxStream, Error, Result};
 use slotmap::Key;
 use tracing::instrument;
 
 use super::Track;
-use crate::tempo_map::TempoMap;
 use crate::{Backend, BackendHandle};
 
 crate::dispatch::define_dispatch_ops! {
@@ -77,40 +75,43 @@ crate::dispatch::define_dispatch_ops! {
         index: usize
     ) -> Result<()>;
 
-    GetTrackRange => get_track_range(
-        view_id: TrackViewId,
-        start: Option<Time>,
-        end: Option<Time>,
-    ) -> Result<Vec<TrackItemId>>;
-
     AddTrackItem => add_track_item(
-        view_id: TrackViewId,
-        item_id: ItemId,
-        position: Time,
-        duration: Time,
+        track_id: TrackId,
+        item: TrackItem,
     ) -> Result<TrackItemId>;
 
     GetTrackItem => get_track_item(
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
     ) -> Result<TrackItem>;
 
     RemoveTrackItem => remove_track_item(
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
     ) -> Result<()>;
 
     MoveTrackItem => move_track_item(
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
-        new_position: Time,
+        new_start: Time,
     ) -> Result<()>;
 
     ResizeTrackItem => resize_track_item(
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()>;
+
+    GetTrackViewItem => get_track_view_item(
+        view_id: TrackViewId,
+        item_id: TrackItemId,
+    ) -> Result<TrackViewItem>;
+
+    GetTrackViewRange => get_track_view_range(
+        view_id: TrackViewId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Result<Vec<(TrackItemId, TrackViewItem)>>;
 }
 
 impl Backend {
@@ -122,10 +123,7 @@ impl Backend {
 
     #[instrument(skip_all, err)]
     pub fn create_track(&mut self) -> Result<TrackId> {
-        // TODO: remove this
-        let tempo_map_id = self.hub.tempo_maps.insert(TempoMap::new(120.0));
-
-        let track = Track::new(tempo_map_id, String::new());
+        let track = Track::new(String::new());
         let id = self.hub.tracks.insert(track);
 
         let mut id_str = format!("{:?}", id.data());
@@ -410,88 +408,40 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_track_range(
-        &self,
-        view_id: TrackViewId,
-        start: Option<Time>,
-        end: Option<Time>,
-    ) -> Result<Vec<TrackItemId>> {
-        let track = self
-            .hub
-            .tracks
-            .get(view_id.track_id)
-            .ok_or(Error::InvalidId)?;
+    pub fn add_track_item(&mut self, track_id: TrackId, item: TrackItem) -> Result<TrackItemId> {
+        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
+        let item_id = track.items.insert(item);
 
-        let tempo_map = self
-            .hub
-            .tempo_maps
-            .get(track.tempo_map_id)
-            .ok_or(Error::InvalidId)?;
-
-        let items = track
-            .items
-            .range(tempo_map, start, end)
-            .map(|(id, _)| id)
-            .collect();
-
-        Ok(items)
-    }
-
-    #[instrument(skip_all, err)]
-    pub fn add_track_item(
-        &mut self,
-        view_id: TrackViewId,
-        item_id: ItemId,
-        position: Time,
-        duration: Time,
-    ) -> Result<TrackItemId> {
-        let track = self
-            .hub
-            .tracks
-            .get_mut(view_id.track_id)
-            .ok_or(Error::InvalidId)?;
-
-        let tempo_map = self
-            .hub
-            .tempo_maps
-            .get(track.tempo_map_id)
-            .ok_or(Error::InvalidId)?;
-
-        let item_id = track.items.insert(tempo_map, item_id, position, duration);
-
-        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
-        let event = TrackViewEvent::ItemAdded {
-            id: item_id,
-            start: item.real_start,
-            end: item.real_end,
-        };
-        self.subscribers.track_view.notify(view_id, event);
+        for (view_id, view) in self.track_view_cache.iter_mut(track_id) {
+            let arrangement = &self.hub.arrangements[view_id.arrangement_id];
+            let tempo_map = &self.hub.tempo_maps[arrangement.tempo_map_id];
+            let view_item = view.add_item(tempo_map, item_id, item);
+            let event = TrackViewEvent::ItemAdded {
+                id: item_id,
+                item: view_item,
+            };
+            self.subscribers.track_view.notify(view_id, event);
+        }
 
         Ok(item_id)
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_track_item(&self, view_id: TrackViewId, item_id: TrackItemId) -> Result<TrackItem> {
-        let track = self
-            .hub
-            .tracks
-            .get(view_id.track_id)
-            .ok_or(Error::InvalidId)?;
-        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
-        Ok(item.clone())
+    pub fn get_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
+        let track = self.hub.tracks.get(track_id).ok_or(Error::InvalidId)?;
+        track.items.get(item_id).copied().ok_or(Error::InvalidId)
     }
 
     #[instrument(skip_all, err)]
-    pub fn remove_track_item(&mut self, view_id: TrackViewId, item_id: TrackItemId) -> Result<()> {
-        let track = self
-            .hub
-            .tracks
-            .get_mut(view_id.track_id)
-            .ok_or(Error::InvalidId)?;
+    pub fn remove_track_item(&mut self, track_id: TrackId, item_id: TrackItemId) -> Result<()> {
+        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
         track.items.remove(item_id);
 
-        let event = TrackViewEvent::ItemRemoved { id: item_id };
-        self.subscribers.track_view.notify(view_id, event);
+        for (view_id, view) in self.track_view_cache.iter_mut(track_id) {
+            view.remove_item(item_id);
+            let event = TrackViewEvent::ItemRemoved { id: item_id };
+            self.subscribers.track_view.notify(view_id, event);
+        }
 
         Ok(())
     }
@@ -499,30 +449,26 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn move_track_item(
         &mut self,
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
-        new_position: Time,
+        new_start: Time,
     ) -> Result<()> {
-        let track = self
-            .hub
-            .tracks
-            .get_mut(view_id.track_id)
-            .ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
+        let item = track.items.get_mut(item_id).ok_or(Error::InvalidId)?;
 
-        let tempo_map = self
-            .hub
-            .tempo_maps
-            .get(track.tempo_map_id)
-            .ok_or(Error::InvalidId)?;
+        item.start = new_start;
 
-        track.items.move_item(tempo_map, item_id, new_position);
-
-        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
-        let event = TrackViewEvent::ItemMoved {
-            id: item_id,
-            new_start: item.real_start,
-        };
-        self.subscribers.track_view.notify(view_id, event);
+        for (view_id, view) in self.track_view_cache.iter_mut(track_id) {
+            let arrangement = &self.hub.arrangements[view_id.arrangement_id];
+            let tempo_map = &self.hub.tempo_maps[arrangement.tempo_map_id];
+            let new_real_start = view.move_item(tempo_map, item_id, new_start);
+            let event = TrackViewEvent::ItemMoved {
+                id: item_id,
+                new_start,
+                new_real_start,
+            };
+            self.subscribers.track_view.notify(view_id, event);
+        }
 
         Ok(())
     }
@@ -530,33 +476,66 @@ impl Backend {
     #[instrument(skip_all, err)]
     pub fn resize_track_item(
         &mut self,
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()> {
-        let track = self
-            .hub
-            .tracks
-            .get_mut(view_id.track_id)
-            .ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
+        let item = track.items.get_mut(item_id).ok_or(Error::InvalidId)?;
 
-        let tempo_map = self
-            .hub
-            .tempo_maps
-            .get(track.tempo_map_id)
-            .ok_or(Error::InvalidId)?;
+        item.duration = new_duration;
 
-        track.items.move_item(tempo_map, item_id, new_duration);
-
-        let item = track.items.get(item_id).ok_or(Error::InvalidId)?;
-        let new_duration = item.real_duration();
-
-        let event = TrackViewEvent::ItemResized {
-            id: item_id,
-            new_duration,
-        };
-        self.subscribers.track_view.notify(view_id, event);
+        for (view_id, view) in self.track_view_cache.iter_mut(track_id) {
+            let arrangement = &self.hub.arrangements[view_id.arrangement_id];
+            let tempo_map = &self.hub.tempo_maps[arrangement.tempo_map_id];
+            let new_real_duration = view.resize_item(tempo_map, item_id, new_duration);
+            let event = TrackViewEvent::ItemResized {
+                id: item_id,
+                new_duration,
+                new_real_duration,
+            };
+            self.subscribers.track_view.notify(view_id, event);
+        }
 
         Ok(())
+    }
+
+    #[instrument(skip_all, err)]
+    pub fn get_track_view_item(
+        &mut self,
+        view_id: TrackViewId,
+        item_id: TrackItemId,
+    ) -> Result<TrackViewItem> {
+        if !self.hub.arrangements.contains_id(view_id.arrangement_id)
+            || !self.hub.tracks.contains_id(view_id.track_id)
+        {
+            return Err(Error::InvalidId);
+        }
+
+        let view = self.track_view_cache.get_or_insert(&self.hub, view_id);
+        view.get_item(item_id).copied().ok_or(Error::InvalidId)
+    }
+
+    #[instrument(skip_all, err)]
+    pub fn get_track_view_range(
+        &mut self,
+        view_id: TrackViewId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Result<Vec<(TrackItemId, TrackViewItem)>> {
+        if !self.hub.arrangements.contains_id(view_id.arrangement_id)
+            || !self.hub.tracks.contains_id(view_id.track_id)
+        {
+            return Err(Error::InvalidId);
+        }
+
+        let arrangement = &self.hub.arrangements[view_id.arrangement_id];
+        let tempo_map = &self.hub.tempo_maps[arrangement.tempo_map_id];
+        let view = self.track_view_cache.get_or_insert(&self.hub, view_id);
+        let range = view
+            .get_range(tempo_map, start, end)
+            .map(|(id, v)| (id, *v))
+            .collect();
+        Ok(range)
     }
 }

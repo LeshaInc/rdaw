@@ -4,12 +4,11 @@ use std::sync::Arc;
 use floem::reactive::use_context;
 use rdaw_api::arrangement::{ArrangementEvent, ArrangementId};
 use rdaw_api::blob::BlobId;
-use rdaw_api::item::ItemId;
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
-    TrackViewEvent, TrackViewId,
+    TrackViewEvent, TrackViewId, TrackViewItem,
 };
 use rdaw_api::{Backend, Error};
 
@@ -152,32 +151,32 @@ generate_methods! {
 
     fn remove_track_child(parent: TrackId, index: usize);
 
-    fn get_track_range(
-        view_id: TrackViewId,
-        start: Option<Time>,
-        end: Option<Time>,
-    ) -> Vec<TrackItemId>;
+    fn add_track_item(track_id: TrackId, item: TrackItem) -> TrackItemId;
 
-    fn add_track_item(
-        view_id: TrackViewId,
-        item_id: ItemId,
-        position: Time,
-        duration: Time,
-    ) -> TrackItemId;
+    fn get_track_item(track_id: TrackId, item_id: TrackItemId) -> TrackItem;
 
-    fn get_track_item(view_id: TrackViewId, item_id: TrackItemId) -> TrackItem;
-
-    fn remove_track_item(view_id: TrackViewId, item_id: TrackItemId);
+    fn remove_track_item(track_id: TrackId, item_id: TrackItemId);
 
     fn move_track_item(
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
         new_position: Time,
     );
 
     fn resize_track_item(
-        view_id: TrackViewId,
+        track_id: TrackId,
         item_id: TrackItemId,
         new_duration: Time,
     );
+
+    fn get_track_view_item(
+        view_id: TrackViewId,
+        item_id: TrackItemId,
+    ) -> TrackViewItem;
+
+    fn get_track_view_range(
+        view_id: TrackViewId,
+        start: Option<Time>,
+        end: Option<Time>,
+    ) -> Vec<(TrackItemId, TrackViewItem)>;
 }

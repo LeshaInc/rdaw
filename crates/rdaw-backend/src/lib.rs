@@ -16,7 +16,7 @@ use slotmap::Key;
 use self::blob::{BlobCache, BlobOperation};
 use self::storage::Hub;
 use self::subscribers::SubscribersHub;
-use self::track::TrackOperation;
+use self::track::{TrackOperation, TrackViewCache};
 
 pub trait Object {
     type Id: Key;
@@ -36,6 +36,7 @@ pub struct Backend {
     hub: Hub,
     subscribers: SubscribersHub,
     blob_cache: BlobCache,
+    track_view_cache: TrackViewCache,
 }
 
 impl Backend {
@@ -47,6 +48,7 @@ impl Backend {
             hub: Hub::default(),
             subscribers: SubscribersHub::default(),
             blob_cache: BlobCache::default(),
+            track_view_cache: TrackViewCache::default(),
         }
     }
 
