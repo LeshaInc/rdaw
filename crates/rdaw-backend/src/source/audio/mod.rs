@@ -1,7 +1,10 @@
+mod ops;
+
 use rdaw_api::blob::BlobId;
 use rdaw_api::source::AudioSourceId;
 use rdaw_core::time::RealTime;
 
+pub use self::ops::AudioSourceOperation;
 use crate::{Object, Uuid};
 
 #[derive(Debug, Clone)]

@@ -14,10 +14,11 @@ use futures_lite::Stream;
 use self::arrangement::ArrangementOperations;
 use self::blob::BlobOperations;
 pub use self::error::{Error, Result};
+use self::source::AudioSourceOperations;
 use self::track::TrackOperations;
 
 pub trait Backend:
-    ArrangementOperations + BlobOperations + TrackOperations + Sync + 'static
+    ArrangementOperations + AudioSourceOperations + BlobOperations + TrackOperations + Sync + 'static
 {
 }
 

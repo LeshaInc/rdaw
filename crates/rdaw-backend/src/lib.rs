@@ -14,6 +14,7 @@ use rdaw_core::Uuid;
 use slotmap::Key;
 
 use self::blob::{BlobCache, BlobOperation};
+use self::source::AudioSourceOperation;
 use self::storage::Hub;
 use self::subscribers::SubscribersHub;
 use self::track::{TrackOperation, TrackViewCache};
@@ -61,6 +62,7 @@ impl Backend {
     pub fn dispatch(&mut self, operation: Operation) {
         match operation {
             Operation::Arrangement(op) => self.dispatch_arrangement_operation(op),
+            Operation::AudioSource(op) => self.dispatch_audio_source_operation(op),
             Operation::Blob(op) => self.dispatch_blob_operation(op),
             Operation::Track(op) => self.dispatch_track_operation(op),
         }
@@ -97,6 +99,7 @@ impl rdaw_api::Backend for BackendHandle {}
 
 pub enum Operation {
     Arrangement(ArrangementOperation),
+    AudioSource(AudioSourceOperation),
     Blob(BlobOperation),
     Track(TrackOperation),
 }
@@ -104,6 +107,12 @@ pub enum Operation {
 impl From<ArrangementOperation> for Operation {
     fn from(op: ArrangementOperation) -> Operation {
         Operation::Arrangement(op)
+    }
+}
+
+impl From<AudioSourceOperation> for Operation {
+    fn from(op: AudioSourceOperation) -> Operation {
+        Operation::AudioSource(op)
     }
 }
 
