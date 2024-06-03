@@ -1,4 +1,5 @@
 pub mod arrangement;
+pub mod audio;
 pub mod blob;
 mod error;
 pub mod item;

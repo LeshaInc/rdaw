@@ -1,3 +1,4 @@
+use rdaw_api::audio::AudioMetadata;
 use rdaw_api::blob::BlobId;
 use rdaw_api::source::{AudioSourceEvent, AudioSourceId, AudioSourceOperations};
 use rdaw_api::{BoxStream, Result};
@@ -31,6 +32,10 @@ crate::dispatch::define_dispatch_ops! {
         id: AudioSourceId,
         new_name: String,
     ) -> Result<()>;
+
+    GetAudioSourceMetadata => get_audio_source_metadata(
+        id: AudioSourceId,
+    ) -> Result<AudioMetadata>;
 }
 
 impl Backend {
@@ -54,6 +59,10 @@ impl Backend {
     }
 
     pub fn set_audio_source_name(&mut self, _id: AudioSourceId, _new_name: String) -> Result<()> {
+        todo!()
+    }
+
+    pub fn get_audio_source_metadata(&self, _id: AudioSourceId) -> Result<AudioMetadata> {
         todo!()
     }
 }

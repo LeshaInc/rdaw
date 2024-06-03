@@ -1,3 +1,5 @@
+use rdaw_api::audio::AudioChannel;
+
 pub trait Driver: Send + Sync + 'static {
     type Error: Send + Sync + 'static;
     type OutStream: OutStream;
@@ -9,7 +11,7 @@ pub struct OutStreamDesc {
     pub name: String,
     pub sample_rate: u32,
     pub buffer_size: usize,
-    pub channels: Vec<Channel>,
+    pub channels: Vec<AudioChannel>,
     pub callback: Box<dyn FnMut(OutCallbackData<'_>) + Send + 'static>,
 }
 
@@ -25,48 +27,4 @@ pub trait OutStream: Send + Sync + 'static {
     fn is_active(&self) -> Result<bool, Self::Error>;
 
     fn set_active(&self, active: bool) -> Result<(), Self::Error>;
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-#[non_exhaustive]
-pub enum Channel {
-    Unknown,
-    Silent,
-    Mono,
-    FL,
-    FR,
-    FC,
-    LFE,
-    SL,
-    SR,
-    FLC,
-    FRC,
-    RC,
-    RL,
-    RR,
-    TC,
-    TFL,
-    TFC,
-    TFR,
-    TRL,
-    TRC,
-    TRR,
-    RLC,
-    RRC,
-    FLW,
-    FRW,
-    LFE2,
-    FLH,
-    FCH,
-    FRH,
-    TFLC,
-    TFRC,
-    TSL,
-    TSR,
-    LLFE,
-    RLFE,
-    BC,
-    BLC,
-    BRC,
-    Aux(u32),
 }

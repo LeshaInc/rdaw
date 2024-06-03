@@ -18,7 +18,8 @@ use pipewire::spa::utils::dict::DictRef;
 use pipewire::spa::utils::Direction;
 use pipewire::stream::{Stream, StreamFlags, StreamListener};
 use pipewire::types::ObjectType;
-use rdaw_audio::driver::{Channel, OutCallbackData, OutStreamDesc};
+use rdaw_api::audio::AudioChannel;
+use rdaw_audio::driver::{OutCallbackData, OutStreamDesc};
 use slotmap::SlotMap;
 
 use crate::{Error, Result};
@@ -279,7 +280,7 @@ impl PwThread {
     }
 }
 
-fn serialize_audio_info(sample_rate: u32, channels: &[Channel]) -> Result<Vec<u8>> {
+fn serialize_audio_info(sample_rate: u32, channels: &[AudioChannel]) -> Result<Vec<u8>> {
     if channels.len() > MAX_CHANNELS {
         return Err(Error::TooManyChannels);
     }
@@ -293,44 +294,44 @@ fn serialize_audio_info(sample_rate: u32, channels: &[Channel]) -> Result<Vec<u8
 
     for (i, &channel) in channels.iter().enumerate() {
         position[i] = match channel {
-            Channel::Silent => SPA_AUDIO_CHANNEL_NA,
-            Channel::Mono => SPA_AUDIO_CHANNEL_MONO,
-            Channel::FL => SPA_AUDIO_CHANNEL_FL,
-            Channel::FR => SPA_AUDIO_CHANNEL_FR,
-            Channel::FC => SPA_AUDIO_CHANNEL_FC,
-            Channel::LFE => SPA_AUDIO_CHANNEL_LFE,
-            Channel::SL => SPA_AUDIO_CHANNEL_SL,
-            Channel::SR => SPA_AUDIO_CHANNEL_SR,
-            Channel::FLC => SPA_AUDIO_CHANNEL_FLC,
-            Channel::FRC => SPA_AUDIO_CHANNEL_FRC,
-            Channel::RC => SPA_AUDIO_CHANNEL_RC,
-            Channel::RL => SPA_AUDIO_CHANNEL_RL,
-            Channel::RR => SPA_AUDIO_CHANNEL_RR,
-            Channel::TC => SPA_AUDIO_CHANNEL_TC,
-            Channel::TFL => SPA_AUDIO_CHANNEL_TFL,
-            Channel::TFC => SPA_AUDIO_CHANNEL_TFC,
-            Channel::TFR => SPA_AUDIO_CHANNEL_TFR,
-            Channel::TRL => SPA_AUDIO_CHANNEL_TRL,
-            Channel::TRC => SPA_AUDIO_CHANNEL_TRC,
-            Channel::TRR => SPA_AUDIO_CHANNEL_TRR,
-            Channel::RLC => SPA_AUDIO_CHANNEL_RLC,
-            Channel::RRC => SPA_AUDIO_CHANNEL_RRC,
-            Channel::FLW => SPA_AUDIO_CHANNEL_FLW,
-            Channel::FRW => SPA_AUDIO_CHANNEL_FRW,
-            Channel::LFE2 => SPA_AUDIO_CHANNEL_LFE2,
-            Channel::FLH => SPA_AUDIO_CHANNEL_FLH,
-            Channel::FCH => SPA_AUDIO_CHANNEL_FCH,
-            Channel::FRH => SPA_AUDIO_CHANNEL_FRH,
-            Channel::TFLC => SPA_AUDIO_CHANNEL_TFLC,
-            Channel::TFRC => SPA_AUDIO_CHANNEL_TFRC,
-            Channel::TSL => SPA_AUDIO_CHANNEL_TSL,
-            Channel::TSR => SPA_AUDIO_CHANNEL_TSR,
-            Channel::LLFE => SPA_AUDIO_CHANNEL_LLFE,
-            Channel::RLFE => SPA_AUDIO_CHANNEL_RLFE,
-            Channel::BC => SPA_AUDIO_CHANNEL_BC,
-            Channel::BLC => SPA_AUDIO_CHANNEL_BLC,
-            Channel::BRC => SPA_AUDIO_CHANNEL_BRC,
-            Channel::Aux(idx) => match SPA_AUDIO_CHANNEL_START_Aux.checked_add(idx) {
+            AudioChannel::Silent => SPA_AUDIO_CHANNEL_NA,
+            AudioChannel::Mono => SPA_AUDIO_CHANNEL_MONO,
+            AudioChannel::FL => SPA_AUDIO_CHANNEL_FL,
+            AudioChannel::FR => SPA_AUDIO_CHANNEL_FR,
+            AudioChannel::FC => SPA_AUDIO_CHANNEL_FC,
+            AudioChannel::LFE => SPA_AUDIO_CHANNEL_LFE,
+            AudioChannel::SL => SPA_AUDIO_CHANNEL_SL,
+            AudioChannel::SR => SPA_AUDIO_CHANNEL_SR,
+            AudioChannel::FLC => SPA_AUDIO_CHANNEL_FLC,
+            AudioChannel::FRC => SPA_AUDIO_CHANNEL_FRC,
+            AudioChannel::RC => SPA_AUDIO_CHANNEL_RC,
+            AudioChannel::RL => SPA_AUDIO_CHANNEL_RL,
+            AudioChannel::RR => SPA_AUDIO_CHANNEL_RR,
+            AudioChannel::TC => SPA_AUDIO_CHANNEL_TC,
+            AudioChannel::TFL => SPA_AUDIO_CHANNEL_TFL,
+            AudioChannel::TFC => SPA_AUDIO_CHANNEL_TFC,
+            AudioChannel::TFR => SPA_AUDIO_CHANNEL_TFR,
+            AudioChannel::TRL => SPA_AUDIO_CHANNEL_TRL,
+            AudioChannel::TRC => SPA_AUDIO_CHANNEL_TRC,
+            AudioChannel::TRR => SPA_AUDIO_CHANNEL_TRR,
+            AudioChannel::RLC => SPA_AUDIO_CHANNEL_RLC,
+            AudioChannel::RRC => SPA_AUDIO_CHANNEL_RRC,
+            AudioChannel::FLW => SPA_AUDIO_CHANNEL_FLW,
+            AudioChannel::FRW => SPA_AUDIO_CHANNEL_FRW,
+            AudioChannel::LFE2 => SPA_AUDIO_CHANNEL_LFE2,
+            AudioChannel::FLH => SPA_AUDIO_CHANNEL_FLH,
+            AudioChannel::FCH => SPA_AUDIO_CHANNEL_FCH,
+            AudioChannel::FRH => SPA_AUDIO_CHANNEL_FRH,
+            AudioChannel::TFLC => SPA_AUDIO_CHANNEL_TFLC,
+            AudioChannel::TFRC => SPA_AUDIO_CHANNEL_TFRC,
+            AudioChannel::TSL => SPA_AUDIO_CHANNEL_TSL,
+            AudioChannel::TSR => SPA_AUDIO_CHANNEL_TSR,
+            AudioChannel::LLFE => SPA_AUDIO_CHANNEL_LLFE,
+            AudioChannel::RLFE => SPA_AUDIO_CHANNEL_RLFE,
+            AudioChannel::BC => SPA_AUDIO_CHANNEL_BC,
+            AudioChannel::BLC => SPA_AUDIO_CHANNEL_BLC,
+            AudioChannel::BRC => SPA_AUDIO_CHANNEL_BRC,
+            AudioChannel::Aux(idx) => match SPA_AUDIO_CHANNEL_START_Aux.checked_add(idx) {
                 Some(v) if v < SPA_AUDIO_CHANNEL_LAST_Aux => v,
                 _ => SPA_AUDIO_CHANNEL_UNKNOWN,
             },

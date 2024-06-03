@@ -1,3 +1,3 @@
 mod audio;
 
-pub use self::audio::{AudioMetadata, AudioSource, AudioSourceOperation};
+pub use self::audio::{AudioSource, AudioSourceOperation};

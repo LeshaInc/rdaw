@@ -1,8 +1,8 @@
 mod ops;
 
+use rdaw_api::audio::AudioMetadata;
 use rdaw_api::blob::BlobId;
 use rdaw_api::source::AudioSourceId;
-use rdaw_core::time::RealTime;
 
 pub use self::ops::AudioSourceOperation;
 use crate::{Object, Uuid};
@@ -38,10 +38,4 @@ impl Object for AudioSource {
     fn uuid(&self) -> Uuid {
         self.uuid
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct AudioMetadata {
-    pub sample_rate: u32,
-    pub duration: RealTime,
 }

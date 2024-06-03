@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rdaw-api.workspace = true
 rdaw-audio.workspace = true
 
 oneshot.workspace = true
