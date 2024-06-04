@@ -1,6 +1,7 @@
 pub mod arrangement;
 pub mod blob;
 pub mod dispatch;
+pub mod document;
 pub mod item;
 pub mod source;
 pub mod storage;

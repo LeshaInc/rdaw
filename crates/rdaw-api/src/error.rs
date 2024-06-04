@@ -16,6 +16,20 @@ pub enum Error {
         #[source]
         error: std::io::Error,
     },
+    #[error("internal error: {error}")]
+    Internal {
+        #[source]
+        error: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
+}
+
+impl Error {
+    #[cold]
+    pub fn new_internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
+        Error::Internal {
+            error: Box::new(error),
+        }
+    }
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
