@@ -24,7 +24,7 @@ fn save() -> Result<()> {
 }
 
 #[test]
-fn save_as() -> Result<()> {
+fn save_copy() -> Result<()> {
     let orig = Document::new()?;
 
     let revision = Revision {
@@ -32,8 +32,8 @@ fn save_as() -> Result<()> {
         time_spent_secs: 15,
     };
 
-    let copy_path = NamedTempFile::with_prefix("rdaw-test-")?.into_temp_path();
-    orig.save_as(&copy_path, revision)?;
+    let copy_path = NamedTempFile::with_prefix(".rdaw-test-")?.into_temp_path();
+    orig.save_copy(&copy_path, revision)?;
 
     let copy = Document::open(&copy_path)?;
     assert_eq!(copy.revisions()?, vec![(RevisionId(1), revision)]);
