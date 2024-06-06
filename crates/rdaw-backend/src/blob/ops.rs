@@ -39,10 +39,7 @@ impl Backend {
 
     #[instrument(skip_all, err)]
     pub fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId> {
-        let data = std::fs::read(&path).map_err(|error| Error::Filesystem {
-            error,
-            path: path.clone(),
-        })?;
+        let data = std::fs::read(&path).map_err(|error| Error::new_filesystem(&path, error))?;
 
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);

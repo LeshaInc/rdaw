@@ -154,17 +154,17 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
             #(#other_items)*
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         #vis enum #req_enum_ident {
             #(#req_enum_variants,)*
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         #vis enum #res_enum_ident {
             #(#res_enum_variants,)*
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         #vis enum #event_enum_ident {
             #(#event_enum_variants,)*
         }

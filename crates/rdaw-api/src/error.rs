@@ -1,35 +1,48 @@
-use std::path::PathBuf;
+use std::fmt::Display;
+use std::path::Path;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]
 pub enum Error {
+    #[error("internal error: {message}")]
+    Internal { message: String },
+
+    #[error("io error: {message}")]
+    Io { message: String },
+    #[error("filesystem error: {path}: {message}")]
+    Filesystem { path: String, message: String },
+
     #[error("disconnected")]
     Disconnected,
+    #[error("index out of bounds")]
+    IndexOutOfBounds,
     #[error("invalid ID")]
     InvalidId,
     #[error("invalid type")]
     InvalidType,
-    #[error("index out of bounds")]
-    IndexOutOfBounds,
     #[error("recursive tracks are not supported")]
     RecursiveTrack,
-    #[error("filesystem error: {path}: {error}")]
-    Filesystem {
-        path: PathBuf,
-        #[source]
-        error: std::io::Error,
-    },
-    #[error("internal error: {error}")]
-    Internal {
-        #[source]
-        error: Box<dyn std::error::Error + Send + Sync + 'static>,
-    },
 }
 
 impl Error {
     #[cold]
-    pub fn new_internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
+    pub fn new_internal<E: Display>(error: E) -> Error {
         Error::Internal {
-            error: Box::new(error),
+            message: error.to_string(),
+        }
+    }
+
+    #[cold]
+    pub fn new_io<E: Display>(error: E) -> Error {
+        Error::Io {
+            message: error.to_string(),
+        }
+    }
+
+    #[cold]
+    pub fn new_filesystem<P: AsRef<Path>, E: Display>(path: P, error: E) -> Error {
+        Error::Filesystem {
+            path: path.as_ref().to_string_lossy().into_owned(),
+            message: error.to_string(),
         }
     }
 }
