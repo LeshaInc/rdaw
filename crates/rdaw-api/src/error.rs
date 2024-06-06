@@ -6,6 +6,8 @@ pub enum Error {
     Disconnected,
     #[error("invalid ID")]
     InvalidId,
+    #[error("invalid type")]
+    InvalidType,
     #[error("index out of bounds")]
     IndexOutOfBounds,
     #[error("recursive tracks are not supported")]
