@@ -188,7 +188,7 @@ fn replace_result_ok_type(ty: &Type, new_ok: Type) -> Option<(Type, Type)> {
         return None;
     };
 
-    let GenericArgument::Type(orig_ty) = args.args.iter_mut().nth(0)? else {
+    let GenericArgument::Type(orig_ty) = args.args.iter_mut().next()? else {
         return None;
     };
 
@@ -216,7 +216,7 @@ fn unwrap_event_type(ty: &Type) -> Option<&Type> {
         return None;
     }
 
-    let GenericArgument::Type(orig_ty) = args.args.iter().nth(0).unwrap() else {
+    let GenericArgument::Type(orig_ty) = args.args.iter().next().unwrap() else {
         return None;
     };
 

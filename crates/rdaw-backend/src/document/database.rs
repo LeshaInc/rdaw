@@ -127,7 +127,7 @@ impl Database {
         let target_dir = path
             .parent()
             .map(|v| v.to_owned())
-            .unwrap_or_else(|| std::env::temp_dir());
+            .unwrap_or_else(std::env::temp_dir);
 
         let temp_file = tempfile::Builder::new()
             .prefix(".rdaw-temp-")
