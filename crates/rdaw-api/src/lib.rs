@@ -7,6 +7,7 @@ pub mod source;
 pub mod tempo_map;
 pub mod time;
 pub mod track;
+pub mod transport;
 
 use std::pin::Pin;
 
@@ -25,6 +26,21 @@ pub trait Backend:
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[repr(transparent)]
 pub struct EventStreamId(pub u64);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[repr(transparent)]
+pub struct RequestId(pub u64);
+
+#[derive(Debug)]
+pub enum ClientMessage<Req> {
+    Request { id: RequestId, payload: Req },
+}
+
+#[derive(Debug)]
+pub enum ServerMessage<Res, Event> {
+    Response { id: RequestId, payload: Res },
+    Event { id: EventStreamId, payload: Event },
+}

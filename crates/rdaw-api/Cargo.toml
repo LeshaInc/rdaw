@@ -7,7 +7,9 @@ edition = "2021"
 rdaw-core.workspace = true
 rdaw-macros.workspace = true
 
+async-channel.workspace = true
 fixed.workspace = true
 futures-lite.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true
+trait-variant.workspace = true
