@@ -11,6 +11,7 @@ rdaw-audio = { path = "crates/rdaw-audio", version = "0.1.0" }
 rdaw-backend = { path = "crates/rdaw-backend", version = "0.1.0" }
 rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
 rdaw-frontend = { path = "crates/rdaw-frontend", version = "0.1.0" }
+rdaw-macros = { path = "crates/rdaw-macros", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
 rdaw-ui-kit = { path = "crates/rdaw-ui-kit", version = "0.1.0" }
 
@@ -20,6 +21,8 @@ async-executor = "1.11.0"
 audio_thread_priority = "0.32.0"
 blake3 = "1.5.1"
 bumpalo = "3.16.0"
+chrono = { version = "0.4.38", features = ["now"] }
+convert_case = "0.6.0"
 crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
 fixed = "1.27.0"
@@ -32,15 +35,17 @@ nix = { version = "0.28.0", features = ["fs", "mman"] }
 oneshot = "0.1.6"
 palette = { version = "0.7.6", default-features = false, features = ["std"] }
 pipewire = "0.8.0"
+proc-macro-error = "1.0.4"
+proc-macro2 = "1.0"
+quote = "1.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rstar = "0.12.0"
 rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "uuid"] }
 slotmap = "1.0.7"
 smallvec = "1.13.2"
+syn = "2.0"
 tempfile = "3.10.1"
 thiserror = "1.0.59"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
-trait-variant = "0.1.2"
 uuid = { version = "1.8.0", features = ["v4"] }
-chrono = { version = "0.4.38", features = ["now"] }

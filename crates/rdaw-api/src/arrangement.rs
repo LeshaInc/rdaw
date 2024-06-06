@@ -6,12 +6,13 @@ slotmap::new_key_type! {
     pub struct ArrangementId;
 }
 
-#[trait_variant::make(Send)]
+#[rdaw_macros::api_operations]
 pub trait ArrangementOperations {
     async fn list_arrangements(&self) -> Result<Vec<ArrangementId>>;
 
     async fn create_arrangement(&self) -> Result<ArrangementId>;
 
+    #[sub]
     async fn subscribe_arrangement(&self, id: ArrangementId)
         -> Result<BoxStream<ArrangementEvent>>;
 

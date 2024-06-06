@@ -6,7 +6,7 @@ slotmap::new_key_type! {
     pub struct BlobId;
 }
 
-#[trait_variant::make(Send)]
+#[rdaw_macros::api_operations]
 pub trait BlobOperations {
     async fn create_internal_blob(&self, data: Vec<u8>) -> Result<BlobId>;
 

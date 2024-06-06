@@ -23,8 +23,12 @@
       in {
         devShell = (pkgs.mkShell.override { stdenv = pkgs.clangStdenv; }) rec {
           buildInputs = with pkgs; [
+            cargo-expand
             clangStdenv
             mold
+            pkg-config
+            rust-toolchain
+            rustPlatform.bindgenHook
 
             dbus
             libxkbcommon
@@ -32,10 +36,6 @@
             vulkan-loader
             vulkan-validation-layers
             wayland
-
-            pkg-config
-            rust-toolchain
-            rustPlatform.bindgenHook
           ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;

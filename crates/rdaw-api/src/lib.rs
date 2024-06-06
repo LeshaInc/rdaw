@@ -24,3 +24,7 @@ pub trait Backend:
 }
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct EventStreamId(pub u64);

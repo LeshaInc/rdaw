@@ -6,12 +6,13 @@ slotmap::new_key_type! {
     pub struct AudioSourceId;
 }
 
-#[trait_variant::make(Send)]
+#[rdaw_macros::api_operations]
 pub trait AudioSourceOperations {
     async fn list_audio_sources(&self) -> Result<Vec<AudioSourceId>>;
 
     async fn create_audio_source(&self, blob: BlobId) -> Result<AudioSourceId>;
 
+    #[sub]
     async fn subscribe_audio_source(
         &self,
         id: AudioSourceId,

@@ -18,19 +18,22 @@ pub struct TrackViewId {
     pub arrangement_id: ArrangementId,
 }
 
-#[trait_variant::make(Send)]
+#[rdaw_macros::api_operations]
 pub trait TrackOperations {
     async fn list_tracks(&self) -> Result<Vec<TrackId>>;
 
     async fn create_track(&self) -> Result<TrackId>;
 
+    #[sub]
     async fn subscribe_track(&self, id: TrackId) -> Result<BoxStream<TrackEvent>>;
 
+    #[sub]
     async fn subscribe_track_hierarchy(
         &self,
         root: TrackId,
     ) -> Result<BoxStream<TrackHierarchyEvent>>;
 
+    #[sub]
     async fn subscribe_track_view(&self, view_id: TrackViewId)
         -> Result<BoxStream<TrackViewEvent>>;
 
