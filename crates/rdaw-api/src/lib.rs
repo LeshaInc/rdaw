@@ -52,7 +52,7 @@ pub enum ClientMessage<P: Protocol> {
 pub enum ServerMessage<P: Protocol> {
     Response {
         id: RequestId,
-        payload: P::Res,
+        payload: Result<P::Res>,
     },
     Event {
         id: EventStreamId,

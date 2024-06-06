@@ -7,7 +7,7 @@ use futures_lite::FutureExt;
 use rdaw_core::collections::HashMap;
 
 use crate::transport::ClientTransport;
-use crate::{ClientMessage, Error, Protocol, RequestId, Result, ServerMessage};
+use crate::{ClientMessage, Protocol, RequestId, Result, ServerMessage};
 
 #[derive(Debug)]
 pub struct Client<P: Protocol, T: ClientTransport<P>> {
@@ -25,11 +25,7 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         }
     }
 
-    pub async fn request<Req, Res>(&self, req: Req) -> Result<Res>
-    where
-        Req: Into<P::Req>,
-        Res: TryFrom<P::Res>,
-    {
+    pub async fn request(&self, req: P::Req) -> Result<P::Res> {
         let id = RequestId(self.req_counter.fetch_add(1, Ordering::Relaxed));
 
         let msg = ClientMessage::Request {
@@ -39,22 +35,16 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
 
         self.transport.send(msg).await?;
 
-        let wait_for_response = async {
-            let res = self.wait_for_response(id).await;
-            Ok(res)
-        };
-
         let recv = async {
             loop {
                 self.recv().await?;
             }
         };
 
-        let res: Result<P::Res> = wait_for_response.or(recv).await;
-        res?.try_into().map_err(|_| Error::InvalidId)
+        self.wait_for_response(id).or(recv).await
     }
 
-    fn wait_for_response(&self, id: RequestId) -> impl Future<Output = P::Res> + '_ {
+    fn wait_for_response(&self, id: RequestId) -> impl Future<Output = Result<P::Res>> + '_ {
         std::future::poll_fn(move |ctx| {
             let Ok(mut requests) = self.requests.lock() else {
                 return Poll::Pending;
@@ -77,11 +67,11 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
 
     async fn recv(&self) -> Result<()> {
         let msg = self.transport.recv().await?;
-        self.handle(msg);
+        self.dispatch(msg);
         Ok(())
     }
 
-    fn handle(&self, msg: ServerMessage<P>) {
+    fn dispatch(&self, msg: ServerMessage<P>) {
         match msg {
             ServerMessage::Response { id, payload } => {
                 let Ok(mut requests) = self.requests.lock() else {
@@ -107,6 +97,6 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
 
 #[derive(Debug)]
 struct RequestSlot<P: Protocol> {
-    response: Option<P::Res>,
+    response: Option<Result<P::Res>>,
     waker: Option<Waker>,
 }

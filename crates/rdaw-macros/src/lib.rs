@@ -50,6 +50,16 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
             !is_sub
         });
 
+        let ReturnType::Type(_, func_ret_ty_res) = &func.sig.output else {
+            emit_error!(func.sig.output.span(), "method must return `Result<T>`");
+            continue;
+        };
+
+        let Some(func_ret_ty) = unwrap_type(func_ret_ty_res, "Result") else {
+            emit_error!(func.sig.output.span(), "method must return `Result<T>`");
+            continue;
+        };
+
         let variant_span = func.sig.ident.span();
         let variant_ident = Ident::new(
             &func.sig.ident.to_string().to_case(Case::Pascal),
@@ -79,30 +89,24 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
         };
 
         let (res_variant, event_variant) = if is_sub {
-            let ReturnType::Type(_, ret_ty) = &func.sig.output else {
-                emit_error!(
-                    func.sig.output.span(),
-                    "method marked with `#[subscribe]` must return a `Result<BoxStream<T>, E>`"
-                );
-                continue;
-            };
-
-            let replacement = Type::Verbatim(quote_spanned! { ret_ty.span() =>
+            let replacement = Type::Verbatim(quote_spanned! { func_ret_ty_res.span() =>
                 crate::EventStreamId
             });
 
-            let Some((orig_ok_ty, result_ty)) = replace_result_ok_type(ret_ty, replacement) else {
+            let Some((orig_ok_ty, result_ty)) =
+                replace_result_ok_type(func_ret_ty_res, replacement)
+            else {
                 emit_error!(
                     func.sig.output.span(),
-                    "method marked with `#[subscribe]` must return a `Result<BoxStream<T>, E>`"
+                    "method marked with `#[subscribe]` must return a `Result<BoxStream<T>>`"
                 );
                 continue;
             };
 
-            let Some(event_ty) = unwrap_event_type(&orig_ok_ty) else {
+            let Some(event_ty) = unwrap_type(&orig_ok_ty, "BoxStream") else {
                 emit_error!(
                     func.sig.output.span(),
-                    "method marked with `#[subscribe]` must return a `Result<BoxStream<T>, E>`"
+                    "method marked with `#[subscribe]` must return a `Result<BoxStream<T>>`"
                 );
                 continue;
             };
@@ -112,11 +116,7 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
 
             (res_variant, Some(event_variant))
         } else {
-            let res_variant = match &func.sig.output {
-                ReturnType::Default => quote!(#variant_ident),
-                ReturnType::Type(_, ty) => quote!(#variant_ident(#ty)),
-            };
-
+            let res_variant = quote!(#variant_ident(#func_ret_ty));
             (res_variant, None)
         };
 
@@ -124,25 +124,21 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
         res_enum_variants.push(res_variant);
         event_enum_variants.extend(event_variant);
 
-        if func.sig.asyncness.is_some() {
-            func.sig.asyncness = None;
-
-            let output_ty = match &func.sig.output {
-                ReturnType::Default => quote_spanned!(func.sig.paren_token.span => ()),
-                ReturnType::Type(_, ty) => quote!(#ty),
-            };
-
-            let new_output_ty = quote_spanned! { output_ty.span() =>
-                impl ::core::future::Future<Output = #output_ty> + Send
-            };
-
-            func.sig.output = ReturnType::Type(
-                Token![->](new_output_ty.span()),
-                Box::new(Type::Verbatim(new_output_ty)),
-            );
-        } else {
+        if func.sig.asyncness.is_none() {
             emit_error!(func.sig, "method must be async");
+            continue;
         }
+
+        func.sig.asyncness = None;
+
+        let new_output_ty = quote_spanned! { func_ret_ty_res.span() =>
+            impl ::core::future::Future<Output = #func_ret_ty_res> + Send
+        };
+
+        func.sig.output = ReturnType::Type(
+            Token![->](new_output_ty.span()),
+            Box::new(Type::Verbatim(new_output_ty)),
+        );
     }
 
     supertraits.push(TypeParamBound::Verbatim(quote! { Send }));
@@ -197,24 +193,20 @@ fn replace_result_ok_type(ty: &Type, new_ok: Type) -> Option<(Type, Type)> {
     Some((orig_ty, ret_ty.into()))
 }
 
-fn unwrap_event_type(ty: &Type) -> Option<&Type> {
+fn unwrap_type<'a>(ty: &'a Type, expect: &str) -> Option<&'a Type> {
     let Type::Path(ret_ty) = ty else {
         return None;
     };
 
     let last_seg = ret_ty.path.segments.last()?;
 
-    if &last_seg.ident.to_string() != "BoxStream" {
+    if &last_seg.ident.to_string() != expect {
         return None;
     }
 
     let PathArguments::AngleBracketed(args) = &last_seg.arguments else {
         return None;
     };
-
-    if args.args.len() != 1 {
-        return None;
-    }
 
     let GenericArgument::Type(orig_ty) = args.args.iter().next().unwrap() else {
         return None;
