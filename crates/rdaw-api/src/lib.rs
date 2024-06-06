@@ -15,15 +15,16 @@ use std::pin::Pin;
 
 use futures_lite::Stream;
 
-use self::arrangement::ArrangementOperations;
-use self::blob::BlobOperations;
 pub use self::client::Client;
 pub use self::error::{Error, Result};
-use self::source::AudioSourceOperations;
-use self::track::TrackOperations;
 
 pub trait Backend:
-    ArrangementOperations + AudioSourceOperations + BlobOperations + TrackOperations + Sync + 'static
+    self::arrangement::ArrangementOperations
+    + self::source::AudioSourceOperations
+    + self::blob::BlobOperations
+    + self::track::TrackOperations
+    + Sync
+    + 'static
 {
 }
 
@@ -33,6 +34,39 @@ pub trait Protocol: Send + Sync + Copy + Debug + 'static {
     type Req: Send + Debug;
     type Res: Send + Debug;
     type Event: Send + Debug;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BackendProtocol;
+
+impl Protocol for BackendProtocol {
+    type Req = BackendRequest;
+    type Res = BackendResponse;
+    type Event = BackendEvents;
+}
+
+#[derive(Debug, Clone)]
+pub enum BackendRequest {
+    Arrangement(self::arrangement::ArrangementRequest),
+    AudioSource(self::source::AudioSourceRequest),
+    Blob(self::blob::BlobRequest),
+    Track(self::track::TrackRequest),
+}
+
+#[derive(Debug, Clone)]
+pub enum BackendResponse {
+    Arrangement(self::arrangement::ArrangementResponse),
+    AudioSource(self::source::AudioSourceResponse),
+    Blob(self::blob::BlobResponse),
+    Track(self::track::TrackResponse),
+}
+
+#[derive(Debug, Clone)]
+pub enum BackendEvents {
+    Arrangement(self::arrangement::ArrangementEvents),
+    AudioSource(self::source::AudioSourceEvents),
+    Blob(self::blob::BlobEvents),
+    Track(self::track::TrackEvents),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]

@@ -7,7 +7,7 @@ use syn::*;
 
 #[proc_macro_attribute]
 #[proc_macro_error]
-pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
+pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
     let ItemTrait {
         attrs,
         vis,
@@ -19,31 +19,36 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
         ..
     } = parse_macro_input!(item as ItemTrait);
 
+    let protocol_path = parse_macro_input!(args as Path);
+
     let mut funcs = items
         .iter()
         .flat_map(|item| match item {
             TraitItem::Fn(v) => Some(v.clone()),
-            _ => None,
+            _ => {
+                emit_error!(item.span(), "items other than `fn` are not supported");
+                None
+            }
         })
         .collect::<Vec<_>>();
 
-    let other_items = items
-        .iter()
-        .flat_map(|item| match item {
-            TraitItem::Fn(_) => None,
-            _ => Some(item),
-        })
-        .collect::<Vec<_>>();
+    let ident_without_ops = Ident::new(
+        ident.to_string().trim_end_matches("Operations"),
+        ident.span(),
+    );
 
-    let req_enum_ident = format_ident!("{ident}Request");
-    let res_enum_ident = format_ident!("{ident}Response");
-    let event_enum_ident = format_ident!("{ident}Event");
+    let req_enum_ident = format_ident!("{ident_without_ops}Request");
+    let res_enum_ident = format_ident!("{ident_without_ops}Response");
+    let event_enum_ident = format_ident!("{ident_without_ops}Events");
 
     let mut req_enum_variants = Vec::new();
     let mut res_enum_variants = Vec::new();
     let mut event_enum_variants = Vec::new();
+    let mut func_impls = Vec::new();
 
     for func in &mut funcs {
+        let orig_func_sig = func.sig.clone();
+
         let mut is_sub = false;
         func.attrs.retain(|attr| {
             is_sub = attr.path().is_ident("sub");
@@ -139,6 +144,15 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
             Token![->](new_output_ty.span()),
             Box::new(Type::Verbatim(new_output_ty)),
         );
+
+        let func_impl = quote! {
+            #[allow(unused_variables)]
+            #orig_func_sig {
+                todo!()
+            }
+        };
+
+        func_impls.push(func_impl);
     }
 
     supertraits.push(TypeParamBound::Verbatim(quote! { Send }));
@@ -147,7 +161,6 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
         #(#attrs)*
         #vis #unsafety trait #ident #generics: #supertraits {
             #(#funcs)*
-            #(#other_items)*
         }
 
         #[derive(Debug, Clone)]
@@ -163,6 +176,14 @@ pub fn api_operations(_args: TokenStream, item: TokenStream) -> TokenStream {
         #[derive(Debug, Clone)]
         #vis enum #event_enum_ident {
             #(#event_enum_variants,)*
+        }
+
+        #[automatically_derived]
+        impl<T> #ident for crate::Client<#protocol_path, T>
+        where
+                T: crate::transport::ClientTransport<#protocol_path>
+        {
+            #(#func_impls)*
         }
     };
 

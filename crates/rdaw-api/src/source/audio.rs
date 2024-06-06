@@ -1,12 +1,12 @@
 use crate::audio::AudioMetadata;
 use crate::blob::BlobId;
-use crate::{BoxStream, Result};
+use crate::{BackendProtocol, BoxStream, Result};
 
 slotmap::new_key_type! {
     pub struct AudioSourceId;
 }
 
-#[rdaw_macros::api_operations]
+#[rdaw_macros::api_operations(BackendProtocol)]
 pub trait AudioSourceOperations {
     async fn list_audio_sources(&self) -> Result<Vec<AudioSourceId>>;
 

@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
-use crate::Result;
+use crate::{BackendProtocol, Result};
 
 slotmap::new_key_type! {
     pub struct BlobId;
 }
 
-#[rdaw_macros::api_operations]
+#[rdaw_macros::api_operations(BackendProtocol)]
 pub trait BlobOperations {
     async fn create_internal_blob(&self, data: Vec<u8>) -> Result<BlobId>;
 

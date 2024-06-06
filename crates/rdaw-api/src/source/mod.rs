@@ -1,6 +1,6 @@
 mod audio;
 
-pub use self::audio::{AudioSourceEvent, AudioSourceId, AudioSourceOperations};
+pub use self::audio::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SourceId {

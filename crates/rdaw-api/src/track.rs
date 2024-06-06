@@ -4,7 +4,7 @@ use rdaw_core::time::RealTime;
 use crate::arrangement::ArrangementId;
 use crate::item::ItemId;
 use crate::time::Time;
-use crate::{BoxStream, Result};
+use crate::{BackendProtocol, BoxStream, Result};
 
 slotmap::new_key_type! {
     pub struct TrackId;
@@ -18,7 +18,7 @@ pub struct TrackViewId {
     pub arrangement_id: ArrangementId,
 }
 
-#[rdaw_macros::api_operations]
+#[rdaw_macros::api_operations(BackendProtocol)]
 pub trait TrackOperations {
     async fn list_tracks(&self) -> Result<Vec<TrackId>>;
 

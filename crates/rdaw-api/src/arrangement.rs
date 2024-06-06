@@ -1,12 +1,12 @@
 use crate::tempo_map::TempoMapId;
 use crate::track::TrackId;
-use crate::{BoxStream, Result};
+use crate::{BackendProtocol, BoxStream, Result};
 
 slotmap::new_key_type! {
     pub struct ArrangementId;
 }
 
-#[rdaw_macros::api_operations]
+#[rdaw_macros::api_operations(BackendProtocol)]
 pub trait ArrangementOperations {
     async fn list_arrangements(&self) -> Result<Vec<ArrangementId>>;
 
