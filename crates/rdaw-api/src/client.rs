@@ -1,19 +1,22 @@
+use std::collections::hash_map;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::task::{Poll, Waker};
 
-use futures_lite::FutureExt;
+use async_channel::Sender;
+use futures_lite::{FutureExt, Stream};
 use rdaw_core::collections::HashMap;
 
 use crate::transport::ClientTransport;
-use crate::{ClientMessage, Protocol, RequestId, Result, ServerMessage};
+use crate::{ClientMessage, EventStreamId, Protocol, RequestId, Result, ServerMessage};
 
 #[derive(Debug)]
 pub struct Client<P: Protocol, T: ClientTransport<P>> {
     transport: T,
     req_counter: AtomicU64,
     requests: Mutex<HashMap<RequestId, RequestSlot<P>>>,
+    streams: Mutex<HashMap<EventStreamId, Sender<P::Event>>>,
 }
 
 impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
@@ -22,6 +25,7 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
             transport,
             req_counter: AtomicU64::new(0),
             requests: Mutex::default(),
+            streams: Mutex::default(),
         }
     }
 
@@ -42,6 +46,12 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         };
 
         self.wait_for_response(id).or(recv).await
+    }
+
+    pub fn subscribe(&self, id: EventStreamId) -> impl Stream<Item = P::Event> {
+        let (sender, receiver) = async_channel::unbounded();
+        self.streams.lock().unwrap().insert(id, sender);
+        receiver
     }
 
     fn wait_for_response(&self, id: RequestId) -> impl Future<Output = Result<P::Res>> + '_ {
@@ -67,11 +77,11 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
 
     async fn recv(&self) -> Result<()> {
         let msg = self.transport.recv().await?;
-        self.dispatch(msg);
+        self.dispatch(msg).await;
         Ok(())
     }
 
-    fn dispatch(&self, msg: ServerMessage<P>) {
+    async fn dispatch(&self, msg: ServerMessage<P>) {
         match msg {
             ServerMessage::Response { id, payload } => {
                 let Ok(mut requests) = self.requests.lock() else {
@@ -90,7 +100,20 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
                 }
             }
 
-            ServerMessage::Event { .. } => todo!(),
+            ServerMessage::Event { id, payload } => {
+                let Ok(mut streams) = self.streams.lock() else {
+                    return;
+                };
+
+                let hash_map::Entry::Occupied(mut entry) = streams.entry(id) else {
+                    return;
+                };
+
+                let res = entry.get_mut().send_blocking(payload);
+                if res.is_err() {
+                    entry.remove();
+                }
+            }
         }
     }
 }
