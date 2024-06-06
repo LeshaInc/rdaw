@@ -26,6 +26,12 @@ pub trait Backend:
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 
+pub trait Protocol: Copy + Send + Sync + 'static {
+    type Req: Send;
+    type Res: Send;
+    type Event: Send;
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct EventStreamId(pub u64);
@@ -35,12 +41,18 @@ pub struct EventStreamId(pub u64);
 pub struct RequestId(pub u64);
 
 #[derive(Debug)]
-pub enum ClientMessage<Req> {
-    Request { id: RequestId, payload: Req },
+pub enum ClientMessage<P: Protocol> {
+    Request { id: RequestId, payload: P::Req },
 }
 
 #[derive(Debug)]
-pub enum ServerMessage<Res, Event> {
-    Response { id: RequestId, payload: Res },
-    Event { id: EventStreamId, payload: Event },
+pub enum ServerMessage<P: Protocol> {
+    Response {
+        id: RequestId,
+        payload: P::Res,
+    },
+    Event {
+        id: EventStreamId,
+        payload: P::Event,
+    },
 }

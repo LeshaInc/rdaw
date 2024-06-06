@@ -1,69 +1,62 @@
 use async_channel::{Receiver, Sender};
 
-use crate::{ClientMessage, Error, Result, ServerMessage};
+use crate::{ClientMessage, Error, Protocol, Result, ServerMessage};
 
 #[trait_variant::make(Send)]
-pub trait ClientTransport<Req, Res, Event> {
-    async fn send(&self, message: ClientMessage<Req>) -> Result<()>;
+pub trait ClientTransport<P: Protocol> {
+    async fn send(&self, message: ClientMessage<P>) -> Result<()>;
 
-    async fn recv(&self) -> Result<ServerMessage<Res, Event>>;
+    async fn recv(&self) -> Result<ServerMessage<P>>;
 }
 
 #[trait_variant::make(Send)]
-pub trait ServerTransport<Req, Res, Event> {
-    async fn send(&self, message: ServerMessage<Res, Event>) -> Result<()>;
+pub trait ServerTransport<P: Protocol> {
+    async fn send(&self, message: ServerMessage<P>) -> Result<()>;
 
-    async fn recv(&self) -> Result<ClientMessage<Req>>;
+    async fn recv(&self) -> Result<ClientMessage<P>>;
 }
 
 #[derive(Debug)]
-pub struct LocalClientTransport<Req, Res, Event> {
-    sender: Sender<ClientMessage<Req>>,
-    receiver: Receiver<ServerMessage<Res, Event>>,
+pub struct LocalClientTransport<P: Protocol> {
+    sender: Sender<ClientMessage<P>>,
+    receiver: Receiver<ServerMessage<P>>,
 }
 
-impl<Req: Send, Res: Send, Event: Send> ClientTransport<Req, Res, Event>
-    for LocalClientTransport<Req, Res, Event>
-{
-    async fn send(&self, message: ClientMessage<Req>) -> Result<()> {
+impl<P: Protocol> ClientTransport<P> for LocalClientTransport<P> {
+    async fn send(&self, message: ClientMessage<P>) -> Result<()> {
         self.sender
             .send(message)
             .await
             .map_err(|_| Error::Disconnected)
     }
 
-    async fn recv(&self) -> Result<ServerMessage<Res, Event>> {
+    async fn recv(&self) -> Result<ServerMessage<P>> {
         self.receiver.recv().await.map_err(|_| Error::Disconnected)
     }
 }
 
 #[derive(Debug)]
-pub struct LocalServerTransport<Req, Res, Event> {
-    sender: Sender<ServerMessage<Res, Event>>,
-    receiver: Receiver<ClientMessage<Req>>,
+pub struct LocalServerTransport<P: Protocol> {
+    sender: Sender<ServerMessage<P>>,
+    receiver: Receiver<ClientMessage<P>>,
 }
 
-impl<Req: Send, Res: Send, Event: Send> ServerTransport<Req, Res, Event>
-    for LocalServerTransport<Req, Res, Event>
-{
-    async fn send(&self, message: ServerMessage<Res, Event>) -> Result<()> {
+impl<P: Protocol> ServerTransport<P> for LocalServerTransport<P> {
+    async fn send(&self, message: ServerMessage<P>) -> Result<()> {
         self.sender
             .send(message)
             .await
             .map_err(|_| Error::Disconnected)
     }
 
-    async fn recv(&self) -> Result<ClientMessage<Req>> {
+    async fn recv(&self) -> Result<ClientMessage<P>> {
         self.receiver.recv().await.map_err(|_| Error::Disconnected)
     }
 }
 
-pub fn local<Req: Send, Res: Send, Event: Send>(
+pub fn local<P: Protocol>(
     cap: Option<usize>,
-) -> (
-    LocalClientTransport<Req, Res, Event>,
-    LocalServerTransport<Req, Res, Event>,
-) {
+) -> (LocalClientTransport<P>, LocalServerTransport<P>) {
     let ((client_sender, server_receiver), (server_sender, client_receiver)) =
         if let Some(cap) = cap {
             (async_channel::bounded(cap), async_channel::bounded(cap))
