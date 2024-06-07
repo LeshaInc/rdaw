@@ -24,7 +24,7 @@ struct Inner<P: Protocol, T: ClientTransport<P>> {
     req_counter: AtomicU64,
     requests: DashMap<RequestId, RequestSlot<P>>,
     streams: DashMap<EventStreamId, Sender<P::Event>>,
-    closed_streams: SegQueue<EventStreamId>,
+    closed_streams: Arc<SegQueue<EventStreamId>>,
 }
 
 impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
@@ -35,12 +35,12 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
                 req_counter: AtomicU64::new(0),
                 requests: DashMap::default(),
                 streams: DashMap::default(),
-                closed_streams: SegQueue::new(),
+                closed_streams: Arc::new(SegQueue::new()),
             }),
         }
     }
 
-    pub async fn handle(&self) -> Result<()> {
+    pub async fn handle(self) -> Result<()> {
         loop {
             let msg = match self.inner.transport.recv().await {
                 Ok(v) => v,
@@ -78,7 +78,7 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         EventStream {
             cleaner: EventStreamCleaner {
                 id,
-                inner: self.inner.clone(),
+                queue: self.inner.closed_streams.clone(),
             },
             receiver,
         }
@@ -144,6 +144,14 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
     }
 }
 
+impl<P: Protocol, T: ClientTransport<P>> Clone for Client<P, T> {
+    fn clone(&self) -> Self {
+        Client {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct RequestSlot<P: Protocol> {
     response: Option<Result<P::Res>>,
@@ -151,28 +159,28 @@ struct RequestSlot<P: Protocol> {
 }
 
 pin_project! {
-    struct EventStream<P: Protocol, T: ClientTransport<P>> {
-        cleaner: EventStreamCleaner<P, T>,
+    struct EventStream<T> {
+        cleaner: EventStreamCleaner,
         #[pin]
-        receiver: Receiver<P::Event>,
+        receiver: Receiver<T>,
     }
 }
 
-impl<P: Protocol, T: ClientTransport<P>> Stream for EventStream<P, T> {
-    type Item = P::Event;
+impl<T> Stream for EventStream<T> {
+    type Item = T;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<P::Event>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
         self.project().receiver.poll_next(cx)
     }
 }
 
-struct EventStreamCleaner<P: Protocol, T: ClientTransport<P>> {
+struct EventStreamCleaner {
     id: EventStreamId,
-    inner: Arc<Inner<P, T>>,
+    queue: Arc<SegQueue<EventStreamId>>,
 }
 
-impl<P: Protocol, T: ClientTransport<P>> Drop for EventStreamCleaner<P, T> {
+impl Drop for EventStreamCleaner {
     fn drop(&mut self) {
-        self.inner.closed_streams.push(self.id);
+        self.queue.push(self.id);
     }
 }

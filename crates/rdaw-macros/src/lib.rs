@@ -1,7 +1,7 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use proc_macro_error::{emit_error, proc_macro_error};
-use quote::{format_ident, quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::*;
@@ -27,7 +27,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         .flat_map(|item| match item {
             TraitItem::Fn(v) => Some(v.clone()),
             _ => {
-                emit_error!(item.span(), "items other than `fn` are not supported");
+                emit_error!(item, "items other than `fn` are not supported");
                 None
             }
         })
@@ -57,12 +57,12 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         });
 
         let ReturnType::Type(_, func_ret_ty_res) = &func.sig.output else {
-            emit_error!(func.sig.output.span(), "method must return `Result<T>`");
+            emit_error!(func.sig.output, "method must return `Result<T>`");
             continue;
         };
 
         let Some(func_ret_ty) = unwrap_type(func_ret_ty_res, "Result") else {
-            emit_error!(func.sig.output.span(), "method must return `Result<T>`");
+            emit_error!(func.sig.output, "method must return `Result<T>`");
             continue;
         };
 
@@ -108,7 +108,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
                 replace_result_ok_type(func_ret_ty_res, replacement)
             else {
                 emit_error!(
-                    func.sig.output.span(),
+                    func.sig.output,
                     "method marked with `#[subscribe]` must return a `Result<BoxStream<T>>`"
                 );
                 continue;
@@ -116,7 +116,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
 
             let Some(event_ty) = unwrap_type(&orig_ok_ty, "BoxStream") else {
                 emit_error!(
-                    func.sig.output.span(),
+                    func.sig.output,
                     "method marked with `#[subscribe]` must return a `Result<BoxStream<T>>`"
                 );
                 continue;
@@ -278,6 +278,80 @@ pub fn api_protocol(args: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+#[proc_macro_attribute]
+#[proc_macro_error]
+pub fn api_handler(args: TokenStream, item: TokenStream) -> TokenStream {
+    let mut item = parse_macro_input!(item as ItemImpl);
+
+    let paths = parse_macro_input!(args as PathList);
+    let protocol_path = &paths.paths[0];
+    let ops_path = &paths.paths[1];
+
+    let ident = &ops_path.segments.last().unwrap().ident;
+    let ident_str = ident.to_string();
+    let base = ident_str.trim_end_matches("Operations");
+
+    let req_ident = Ident::new(&format!("{base}Request"), ident.span());
+    let res_ident = Ident::new(&format!("{base}Response"), ident.span());
+
+    let mut match_cases = Vec::new();
+
+    for item in &item.items {
+        let ImplItem::Fn(func) = item else { continue };
+
+        let func_name = &func.sig.ident;
+        let name = Ident::new(
+            &func.sig.ident.to_string().to_case(Case::Pascal),
+            func.sig.ident.span(),
+        );
+
+        let args = func
+            .sig
+            .inputs
+            .iter()
+            .flat_map(|v| match v {
+                FnArg::Receiver(_) => None,
+                FnArg::Typed(PatType { pat, .. }) => match **pat {
+                    Pat::Ident(ref ident) => Some(ident.ident.clone()),
+                    _ => {
+                        emit_error!(pat, "complex patterns in arguments are not supported");
+                        None
+                    }
+                },
+            })
+            .collect::<Vec<_>>();
+
+        match_cases.push(quote! {
+            #req_ident::#name { #(#args,)* } => {
+                let payload = self
+                    .#func_name(#(#args,)*)
+                    .map(#res_ident::#name)
+                    .map(|v| v.into());
+                transport
+                    .send(crate::ServerMessage::Response { id, payload })
+                    .await
+            }
+        });
+    }
+
+    let handler = quote! {
+        async fn handle_foo_request<T: crate::transport::ServerTransport<#protocol_path>>(
+            &mut self,
+            transport: Arc<T>,
+            id: crate::RequestId,
+            req: #req_ident,
+        ) -> crate::Result<()> {
+            match req {
+                #(#match_cases)*
+            }
+        }
+    };
+
+    item.items.push(ImplItem::Verbatim(handler));
+
+    item.to_token_stream().into()
 }
 
 struct PathList {

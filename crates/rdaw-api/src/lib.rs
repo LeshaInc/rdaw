@@ -6,6 +6,8 @@ mod error;
 pub mod item;
 pub mod source;
 pub mod tempo_map;
+#[cfg(test)]
+mod tests;
 pub mod time;
 pub mod track;
 pub mod transport;
