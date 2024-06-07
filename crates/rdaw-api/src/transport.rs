@@ -3,14 +3,14 @@ use async_channel::{Receiver, Sender};
 use crate::{ClientMessage, Error, Protocol, Result, ServerMessage};
 
 #[trait_variant::make(Send)]
-pub trait ClientTransport<P: Protocol>: Send + Sync {
+pub trait ClientTransport<P: Protocol>: Send + Sync + 'static {
     async fn send(&self, message: ClientMessage<P>) -> Result<()>;
 
     async fn recv(&self) -> Result<ServerMessage<P>>;
 }
 
 #[trait_variant::make(Send)]
-pub trait ServerTransport<P: Protocol>: Send + Sync {
+pub trait ServerTransport<P: Protocol>: Send + Sync + 'static {
     async fn send(&self, message: ServerMessage<P>) -> Result<()>;
 
     async fn recv(&self) -> Result<ClientMessage<P>>;

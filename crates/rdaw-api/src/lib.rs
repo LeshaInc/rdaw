@@ -31,43 +31,19 @@ pub trait Backend:
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 
 pub trait Protocol: Send + Sync + Copy + Debug + 'static {
-    type Req: Send + Debug;
-    type Res: Send + Debug;
-    type Event: Send + Debug;
+    type Req: Send + Debug + 'static;
+    type Res: Send + Debug + 'static;
+    type Event: Send + Debug + 'static;
 }
 
+#[rdaw_macros::api_protocol(
+    self::arrangement::ArrangementOperations,
+    self::source::AudioSourceOperations,
+    self::blob::BlobOperations,
+    self::track::TrackOperations
+)]
 #[derive(Debug, Clone, Copy)]
 pub struct BackendProtocol;
-
-impl Protocol for BackendProtocol {
-    type Req = BackendRequest;
-    type Res = BackendResponse;
-    type Event = BackendEvents;
-}
-
-#[derive(Debug, Clone)]
-pub enum BackendRequest {
-    Arrangement(self::arrangement::ArrangementRequest),
-    AudioSource(self::source::AudioSourceRequest),
-    Blob(self::blob::BlobRequest),
-    Track(self::track::TrackRequest),
-}
-
-#[derive(Debug, Clone)]
-pub enum BackendResponse {
-    Arrangement(self::arrangement::ArrangementResponse),
-    AudioSource(self::source::AudioSourceResponse),
-    Blob(self::blob::BlobResponse),
-    Track(self::track::TrackResponse),
-}
-
-#[derive(Debug, Clone)]
-pub enum BackendEvents {
-    Arrangement(self::arrangement::ArrangementEvents),
-    AudioSource(self::source::AudioSourceEvents),
-    Blob(self::blob::BlobEvents),
-    Track(self::track::TrackEvents),
-}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 #[repr(transparent)]
