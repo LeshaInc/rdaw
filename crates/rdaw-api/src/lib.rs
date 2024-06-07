@@ -56,6 +56,7 @@ pub struct RequestId(pub u64);
 #[derive(Debug)]
 pub enum ClientMessage<P: Protocol> {
     Request { id: RequestId, payload: P::Req },
+    CloseStream { id: EventStreamId },
 }
 
 #[derive(Debug)]
@@ -67,5 +68,8 @@ pub enum ServerMessage<P: Protocol> {
     Event {
         id: EventStreamId,
         payload: P::Event,
+    },
+    CloseStream {
+        id: EventStreamId,
     },
 }
