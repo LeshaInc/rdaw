@@ -25,6 +25,7 @@ chrono = { version = "0.4.38", features = ["now"] }
 convert_case = "0.6.0"
 crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
+dashmap = "5.5.3"
 fixed = "1.27.0"
 floem = { git = "https://github.com/lapce/floem.git", rev = "c74beb142dd2611ff5a2f648e3bdb4b9437c9dc7" }
 futures-lite = "2.3.0"

@@ -1,15 +1,14 @@
-use std::collections::hash_map;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use async_channel::{Receiver, Sender};
 use crossbeam_queue::SegQueue;
 use futures_lite::Stream;
 use pin_project_lite::pin_project;
-use rdaw_core::collections::HashMap;
+use rdaw_core::collections::{dashmap, DashMap};
 
 use crate::transport::ClientTransport;
 use crate::{ClientMessage, Error, EventStreamId, Protocol, RequestId, Result, ServerMessage};
@@ -23,8 +22,8 @@ pub struct Client<P: Protocol, T: ClientTransport<P>> {
 struct Inner<P: Protocol, T: ClientTransport<P>> {
     transport: T,
     req_counter: AtomicU64,
-    requests: Mutex<HashMap<RequestId, RequestSlot<P>>>,
-    streams: Mutex<HashMap<EventStreamId, Sender<P::Event>>>,
+    requests: DashMap<RequestId, RequestSlot<P>>,
+    streams: DashMap<EventStreamId, Sender<P::Event>>,
     closed_streams: SegQueue<EventStreamId>,
 }
 
@@ -34,8 +33,8 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
             inner: Arc::new(Inner {
                 transport,
                 req_counter: AtomicU64::new(0),
-                requests: Mutex::default(),
-                streams: Mutex::default(),
+                requests: DashMap::default(),
+                streams: DashMap::default(),
                 closed_streams: SegQueue::new(),
             }),
         }
@@ -74,7 +73,7 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
 
     pub fn subscribe(&self, id: EventStreamId) -> impl Stream<Item = P::Event> {
         let (sender, receiver) = async_channel::unbounded();
-        self.inner.streams.lock().unwrap().insert(id, sender);
+        self.inner.streams.insert(id, sender);
 
         EventStream {
             cleaner: EventStreamCleaner {
@@ -87,14 +86,14 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
 
     fn wait_for_response(&self, id: RequestId) -> impl Future<Output = Result<P::Res>> + '_ {
         std::future::poll_fn(move |ctx| {
-            let Ok(mut requests) = self.inner.requests.lock() else {
-                return Poll::Pending;
-            };
-
-            let slot = requests.entry(id).or_insert_with(|| RequestSlot {
-                response: None,
-                waker: None,
-            });
+            let mut slot = self
+                .inner
+                .requests
+                .entry(id)
+                .or_insert_with(|| RequestSlot {
+                    response: None,
+                    waker: None,
+                });
 
             if let Some(response) = slot.response.take() {
                 return Poll::Ready(response);
@@ -109,14 +108,14 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
     async fn handle_msg(&self, msg: ServerMessage<P>) {
         match msg {
             ServerMessage::Response { id, payload } => {
-                let Ok(mut requests) = self.inner.requests.lock() else {
-                    return;
-                };
-
-                let slot = requests.entry(id).or_insert_with(|| RequestSlot {
-                    response: None,
-                    waker: None,
-                });
+                let mut slot = self
+                    .inner
+                    .requests
+                    .entry(id)
+                    .or_insert_with(|| RequestSlot {
+                        response: None,
+                        waker: None,
+                    });
 
                 slot.response = Some(payload);
 
@@ -126,11 +125,9 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
             }
 
             ServerMessage::Event { id, payload } => {
-                let Ok(mut streams) = self.inner.streams.lock() else {
-                    return;
-                };
-
-                let hash_map::Entry::Occupied(mut entry) = streams.entry(id) else {
+                let dashmap::mapref::entry::Entry::Occupied(mut entry) =
+                    self.inner.streams.entry(id)
+                else {
                     return;
                 };
 
@@ -141,11 +138,7 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
             }
 
             ServerMessage::CloseStream { id } => {
-                let Ok(mut streams) = self.inner.streams.lock() else {
-                    return;
-                };
-
-                streams.remove(&id);
+                self.inner.streams.remove(&id);
             }
         }
     }
