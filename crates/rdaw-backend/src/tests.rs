@@ -1,6 +1,7 @@
 use std::future::Future;
 
-use futures::future::block_on;
+use futures::executor::LocalPool;
+use futures::task::SpawnExt;
 use futures::FutureExt;
 use rdaw_api::track::TrackId;
 use rdaw_api::{BackendProtocol, Result};
@@ -15,17 +16,23 @@ where
     Fn: FnOnce(Client<BackendProtocol, LocalClientTransport<BackendProtocol>>) -> Fut,
     Fut: Future<Output = Result<()>>,
 {
+    let mut executor = LocalPool::new();
+    let spawner = executor.spawner();
+
     let (client_transport, server_transport) = transport::local(None);
 
     let client = Client::new(client_transport);
-    let handle_client = client.clone().handle();
-
     let mut backend = Backend::new(server_transport);
-    let handle_backend = backend.handle();
 
-    let run_test = f(client);
+    spawner
+        .spawn(client.clone().handle().map(|v| v.unwrap()))
+        .unwrap();
 
-    block_on(run_test.or(handle_client).or(handle_backend))
+    spawner
+        .spawn(async move { backend.handle().await.unwrap() })
+        .unwrap();
+
+    executor.run_until(f(client))
 }
 
 pub fn invalid_track_id() -> TrackId {

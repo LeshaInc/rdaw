@@ -1,4 +1,5 @@
-use futures::future::block_on;
+use futures::executor::LocalPool;
+use futures::task::SpawnExt;
 use futures::FutureExt;
 use rdaw_rpc::transport::{self, ServerTransport};
 use rdaw_rpc::{handler, operations, protocol, Client, ClientMessage};
@@ -51,19 +52,26 @@ impl TestBackend {
 
 #[test]
 fn local_client() -> Result<()> {
+    let mut executor = LocalPool::new();
+    let spawner = executor.spawner();
+
     let (client_transport, server_transport) = transport::local(None);
 
     let client = Client::<TestProtocol, _>::new(client_transport);
     let mut server = TestBackend;
 
-    let handle = client.clone().handle().or(server.handle(server_transport));
+    spawner
+        .spawn(client.clone().handle().map(|v| v.unwrap()))
+        .unwrap();
 
-    let test = async move {
+    spawner
+        .spawn(async move { server.handle(server_transport).await.unwrap() })
+        .unwrap();
+
+    executor.run_until(async move {
         let foo = client.get_foo().await?;
         assert_eq!(foo, 1);
 
         Ok(())
-    };
-
-    block_on(test.or(handle))
+    })
 }
