@@ -163,7 +163,7 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
 
         let func_body = if is_sub {
             quote! {
-                use futures_lite::StreamExt;
+                use futures::StreamExt as _;
 
                 let res = self.request(
                     #req_enum_ident::#variant_ident { #(#param_names,)* }.into()

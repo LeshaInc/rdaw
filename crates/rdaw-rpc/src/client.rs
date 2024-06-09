@@ -6,7 +6,7 @@ use std::task::{Context, Poll, Waker};
 
 use async_channel::{Receiver, Sender};
 use crossbeam_queue::SegQueue;
-use futures_lite::Stream;
+use futures::Stream;
 use pin_project_lite::pin_project;
 use rdaw_core::collections::{dashmap, DashMap};
 

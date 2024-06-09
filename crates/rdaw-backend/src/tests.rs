@@ -1,7 +1,7 @@
 use std::future::Future;
 
-use futures_lite::future::block_on;
-use futures_lite::FutureExt;
+use futures::future::block_on;
+use futures::FutureExt;
 use rdaw_api::track::TrackId;
 use rdaw_api::{BackendProtocol, Result};
 use rdaw_rpc::transport::{self, LocalClientTransport};

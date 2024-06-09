@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::thread;
 
-use futures_lite::future::block_on;
+use futures::executor::block_on;
 use rdaw_backend::Backend;
 use rdaw_rpc::{transport, Client};
 

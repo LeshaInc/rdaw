@@ -1,4 +1,4 @@
-use futures_lite::StreamExt;
+use futures::StreamExt;
 use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackNode, TrackOperations};
 use rdaw_api::{Error, Result};
 

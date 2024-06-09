@@ -8,6 +8,6 @@ rdaw-core.workspace = true
 rdaw-rpc.workspace = true
 
 fixed.workspace = true
-futures-lite.workspace = true
+futures.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true

@@ -9,7 +9,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use crossbeam_utils::Backoff;
-use futures_lite::Stream;
+use futures::Stream;
 
 pub use self::ipc::{IpcChannel, IpcReceiver, IpcSender, RawIpcReceiver, RawIpcSender};
 pub use self::local::{RawLocalReceiver, RawLocalSender};

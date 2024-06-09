@@ -5,14 +5,13 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
-use async_executor::Executor;
 use floem::ext_event::{create_ext_action, register_ext_trigger};
 use floem::keyboard::{Key, Modifiers, NamedKey};
 use floem::reactive::{provide_context, use_context, with_scope, Scope};
 use floem::views::Decorators;
 use floem::{IntoView, View};
-use futures_lite::future::block_on;
-use futures_lite::StreamExt;
+use futures::executor::{block_on, ThreadPool};
+use futures::StreamExt;
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::{Backend, BoxStream};
 use rdaw_ui_kit::Theme;
@@ -28,7 +27,7 @@ pub fn spawn<T: Send + 'static>(
     on_completed: impl FnOnce(T) + 'static,
 ) {
     let scope = Scope::current();
-    let executor = use_context::<Arc<Executor>>().unwrap();
+    let executor = use_context::<Arc<ThreadPool>>().unwrap();
 
     let child = scope.create_child();
     let send = create_ext_action(scope, move |v| {
@@ -37,7 +36,7 @@ pub fn spawn<T: Send + 'static>(
         });
     });
 
-    scope.create_rw_signal(executor.spawn(async move {
+    scope.create_rw_signal(executor.spawn_ok(async move {
         send(future.await);
     }));
 }
@@ -77,20 +76,12 @@ pub fn stream_for_each<T: Send + 'static>(
 }
 
 pub fn run(backend: Arc<dyn Backend>) {
-    let executor = Arc::new(Executor::new());
+    let executor = Arc::new(ThreadPool::builder().pool_size(1).create().unwrap());
 
     provide_context(backend.clone());
     provide_context(executor.clone());
 
     Theme::light().provide();
-
-    std::thread::spawn(move || {
-        block_on(async move {
-            loop {
-                executor.tick().await;
-            }
-        })
-    });
 
     let main_arrangement = block_on(async move { backend.create_arrangement().await }).unwrap();
 

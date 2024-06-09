@@ -9,7 +9,7 @@ rdaw-macros.workspace = true
 
 async-channel.workspace = true
 crossbeam-queue.workspace = true
-futures-lite.workspace = true
+futures.workspace = true
 pin-project-lite.workspace = true
 thiserror.workspace = true
 trait-variant.workspace = true

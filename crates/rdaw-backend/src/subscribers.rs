@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures_lite::Stream;
+use futures::Stream;
 use rdaw_api::arrangement::{ArrangementEvent, ArrangementId};
 use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackId, TrackViewEvent, TrackViewId};
 use rdaw_core::collections::HashMap;

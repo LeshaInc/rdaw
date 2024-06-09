@@ -13,7 +13,7 @@ pub mod track;
 use std::fmt::Debug;
 use std::pin::Pin;
 
-use futures_lite::Stream;
+use futures::Stream;
 
 pub use self::error::{Error, Result};
 

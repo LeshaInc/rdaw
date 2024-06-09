@@ -1,5 +1,5 @@
-use futures_lite::future::block_on;
-use futures_lite::FutureExt;
+use futures::future::block_on;
+use futures::FutureExt;
 use rdaw_rpc::transport::{self, ServerTransport};
 use rdaw_rpc::{handler, operations, protocol, Client, ClientMessage};
 
