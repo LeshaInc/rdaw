@@ -13,8 +13,8 @@ use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::track::{TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
 use rdaw_core::collections::{HashMap, HashSet, ImVec};
 
-use crate::api;
 use crate::views::{track_control, track_items};
+use crate::{api, stream_for_each};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum DropLocation {
@@ -38,9 +38,12 @@ struct State {
 pub fn arrangement(id: ArrangementId) -> impl IntoView {
     let main_track = RwSignal::new(None);
 
-    api::get_arrangement_main_track(id, move |id| {
-        main_track.set(Some(id));
-    });
+    api::call(
+        move |api| async move { api.get_arrangement_main_track(id).await },
+        move |id| {
+            main_track.set(Some(id));
+        },
+    );
 
     dyn_container(move || match main_track.get() {
         Some(id) => track_tree(id).into_any(),
@@ -60,19 +63,26 @@ fn track_tree(root: TrackId) -> impl IntoView {
         track_heights: RwSignal::new(HashMap::default()),
     };
 
-    api::get_track_hierarchy(root, move |new_hierarchy| {
-        state.hierarchy.set(new_hierarchy);
-    });
+    api::call(
+        move |api| async move {
+            let hierarchy = api.get_track_hierarchy(root).await?;
+            let stream = api.subscribe_track_hierarchy(root).await?;
+            Ok((hierarchy, stream))
+        },
+        move |(new_hierarchy, stream)| {
+            state.hierarchy.set(new_hierarchy);
 
-    api::subscribe_track_hierarchy(root, move |event| {
-        let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event else {
-            return;
-        };
+            stream_for_each(stream, move |event| {
+                let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event else {
+                    return;
+                };
 
-        state.hierarchy.update(|v| {
-            v.set_children(id, new_children.into_iter().collect());
-        });
-    });
+                state.hierarchy.update(|v| {
+                    v.set_children(id, new_children.into_iter().collect());
+                });
+            })
+        },
+    );
 
     let order = create_memo(move |_| {
         let mut order = ImVec::new();
@@ -358,7 +368,13 @@ fn track_control_node(state: State, node: TrackNode) -> impl IntoView {
             _ => return,
         };
 
-        api::move_track(old_parent, old_index, new_parent, new_index);
+        api::call(
+            move |api| async move {
+                api.move_track(old_parent, old_index, new_parent, new_index)
+                    .await
+            },
+            drop,
+        );
     };
 
     let marker = move |location| {

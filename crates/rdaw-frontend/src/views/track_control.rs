@@ -5,19 +5,28 @@ use floem::IntoView;
 use rdaw_api::track::{TrackEvent, TrackId};
 use rdaw_ui_kit::{button, ColorKind, Level};
 
-use crate::api;
+use crate::{api, stream_for_each};
 
 pub fn track_control(id: TrackId) -> impl IntoView {
     let name = RwSignal::new(String::new());
     let editor_name = RwSignal::new(String::new());
 
-    api::get_track_name(id, move |new_name| name.set(new_name));
+    api::call(
+        move |api| async move {
+            let name = api.get_track_name(id).await?;
+            let stream = api.subscribe_track(id).await?;
+            Ok((name, stream))
+        },
+        move |(new_name, stream)| {
+            name.set(new_name);
 
-    api::subscribe_track(id, move |event| {
-        if let TrackEvent::NameChanged { new_name } = event {
-            name.set(new_name)
-        }
-    });
+            stream_for_each(stream, move |event| {
+                if let TrackEvent::NameChanged { new_name } = event {
+                    name.set(new_name)
+                }
+            })
+        },
+    );
 
     create_effect(move |old| {
         let editor_name = editor_name.get();
@@ -27,7 +36,11 @@ pub fn track_control(id: TrackId) -> impl IntoView {
             return editor_name;
         };
 
-        api::set_track_name(id, editor_name.clone());
+        let name = editor_name.clone();
+        api::call(
+            move |api| async move { api.set_track_name(id, name).await },
+            drop,
+        );
 
         editor_name
     });
@@ -37,9 +50,13 @@ pub fn track_control(id: TrackId) -> impl IntoView {
     });
 
     let add_child = move |_ev: &Event| {
-        api::create_track(move |child_id| {
-            api::append_track_child(id, child_id);
-        });
+        api::call(
+            move |api| async move {
+                let child_id = api.create_track().await?;
+                api.append_track_child(id, child_id).await
+            },
+            drop,
+        );
     };
 
     let add_child_button = button(ColorKind::Surface, Level::Mid, || "Add child")
