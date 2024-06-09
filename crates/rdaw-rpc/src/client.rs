@@ -57,13 +57,10 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         }
     }
 
-    pub async fn request(&self, req: P::Req) -> Result<P::Res, P::Error> {
+    pub async fn request(&self, payload: P::Req) -> Result<P::Res, P::Error> {
         let id = RequestId(self.inner.req_counter.fetch_add(1, Ordering::Relaxed));
 
-        let msg = ClientMessage::Request {
-            id,
-            payload: req.into(),
-        };
+        let msg = ClientMessage::Request { id, payload };
 
         self.inner.transport.send(msg).await?;
         self.wait_for_response(id).await

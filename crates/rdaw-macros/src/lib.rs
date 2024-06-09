@@ -444,7 +444,7 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
 
 fn parse_macro_args<T: FromMeta>(args: TokenStream) -> Result<T, darling::Error> {
     let attr_args = NestedMeta::parse_meta_list(args.into())?;
-    Ok(T::from_list(&attr_args)?)
+    T::from_list(&attr_args)
 }
 
 fn generate_sum_enum(
@@ -530,7 +530,7 @@ fn unwrap_type<'a>(ty: &'a syn::Type, expect: &str) -> Option<&'a syn::Type> {
 
     let last_seg = ret_ty.path.segments.last()?;
 
-    if &last_seg.ident.to_string() != expect {
+    if last_seg.ident != expect {
         return None;
     }
 

@@ -11,6 +11,7 @@ use floem::reactive::{provide_context, use_context, with_scope, Scope};
 use floem::views::Decorators;
 use floem::{IntoView, View};
 use futures::executor::{block_on, ThreadPool};
+use futures::task::SpawnExt;
 use futures::StreamExt;
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::{Backend, BoxStream};
@@ -36,9 +37,13 @@ pub fn spawn<T: Send + 'static>(
         });
     });
 
-    scope.create_rw_signal(executor.spawn_ok(async move {
-        send(future.await);
-    }));
+    let handle = executor
+        .spawn_with_handle(async move {
+            send(future.await);
+        })
+        .unwrap();
+
+    scope.create_rw_signal(handle);
 }
 
 pub fn stream_for_each<T: Send + 'static>(
