@@ -45,10 +45,13 @@ pub fn arrangement(id: ArrangementId) -> impl IntoView {
         },
     );
 
-    dyn_container(move || match main_track.get() {
-        Some(id) => track_tree(id).into_any(),
-        None => empty().into_any(),
-    })
+    dyn_container(
+        move || main_track.get(),
+        move |main_track| match main_track {
+            Some(id) => track_tree(id).into_any(),
+            None => empty().into_any(),
+        },
+    )
     .style(|s| s.width_full().height_full())
 }
 

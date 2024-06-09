@@ -28,7 +28,7 @@ crossbeam-utils = "0.8.19"
 darling = "0.20.9"
 dashmap = "5.5.3"
 fixed = "1.27.0"
-floem = { git = "https://github.com/lapce/floem.git", rev = "c74beb142dd2611ff5a2f648e3bdb4b9437c9dc7" }
+floem = { git = "https://github.com/lapce/floem.git", rev = "83a0384033edd2bbfd5888dd8c6586ca22ae0246" }
 futures = { version = "0.3.30", features = ["thread-pool"] }
 im = "15.1.0"
 libc = "0.2.154"
