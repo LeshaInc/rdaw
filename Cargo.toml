@@ -17,20 +17,20 @@ rdaw-rpc = { path = "crates/rdaw-rpc", version = "0.1.0" }
 rdaw-ui-kit = { path = "crates/rdaw-ui-kit", version = "0.1.0" }
 
 ahash = "0.8.11"
-async-channel = "2.3.1"
+async-channel = "2.3"
 audio_thread_priority = "0.32.0"
-blake3 = "1.5.1"
-bumpalo = "3.16.0"
+blake3 = "1.5"
+bumpalo = "3.16"
 chrono = { version = "0.4.38", features = ["now"] }
 convert_case = "0.6.0"
 crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
 darling = "0.20.9"
-dashmap = "5.5.3"
-fixed = "1.27.0"
+dashmap = "5.5"
+fixed = "1.27"
 floem = { git = "https://github.com/lapce/floem.git", rev = "83a0384033edd2bbfd5888dd8c6586ca22ae0246" }
 futures = { version = "0.3.30", features = ["thread-pool"] }
-im = "15.1.0"
+im = "15.1"
 libc = "0.2.154"
 loom = "0.7.2"
 nix = { version = "0.28.0", features = ["fs", "mman"] }
@@ -38,18 +38,20 @@ oneshot = "0.1.6"
 palette = { version = "0.7.6", default-features = false, features = ["std"] }
 pin-project-lite = "0.2.14"
 pipewire = "0.8.0"
-proc-macro-error = "1.0.4"
+postcard = "1.0"
+proc-macro-error = "1.0"
 proc-macro2 = "1.0"
 quote = "1.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rstar = "0.12.0"
 rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "uuid"] }
-slotmap = "1.0.7"
-smallvec = "1.13.2"
+serde = { version = "1.0", features = ["derive"] }
+slotmap = "1.0"
+smallvec = "1.13"
 syn = "2.0"
-tempfile = "3.10.1"
-thiserror = "1.0.59"
+tempfile = "3.10"
+thiserror = "1.0"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 trait-variant = "0.1.2"
-uuid = { version = "1.8.0", features = ["v4"] }
+uuid = { version = "1.8", features = ["v4", "serde"] }

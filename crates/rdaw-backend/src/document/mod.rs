@@ -1,4 +1,6 @@
 mod database;
+mod encoding;
+mod metadata;
 #[cfg(test)]
 mod tests;
 
@@ -8,6 +10,7 @@ use chrono::{DateTime, Utc};
 use rdaw_core::Uuid;
 
 use self::database::Database;
+pub use self::metadata::Metadata;
 
 #[derive(Debug)]
 pub struct Document {
@@ -18,10 +21,7 @@ pub struct Document {
 
 impl Document {
     pub fn new() -> Result<Document> {
-        let metadata = Metadata {
-            uuid: Uuid::new_v4(),
-        };
-
+        let metadata = Metadata::new(Uuid::new_v4());
         let db = Database::new(metadata)?;
 
         Ok(Document {
@@ -56,14 +56,9 @@ impl Document {
     }
 
     pub fn save_copy(&self, path: &Path, revision: Revision) -> Result<Document> {
-        let metadata = Metadata {
-            uuid: Uuid::new_v4(),
-        };
-
-        let db = self.db.save_copy(path, revision, metadata)?;
-
+        let db = self.db.save_copy(path, revision, self.metadata)?;
         Ok(Document {
-            metadata,
+            metadata: self.metadata,
             db,
             path: Some(path.into()),
         })
@@ -84,6 +79,8 @@ pub enum Error {
     InvalidDocument,
     #[error("invalid utf8")]
     InvalidUtf8,
+    #[error("serialization failed")]
+    SerializationFailed,
     #[error("database error: {error}")]
     Database {
         #[source]
@@ -107,9 +104,4 @@ pub struct RevisionId(pub u64);
 pub struct Revision {
     pub created_at: DateTime<Utc>,
     pub time_spent_secs: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Metadata {
-    pub uuid: Uuid,
 }

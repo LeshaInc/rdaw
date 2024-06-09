@@ -4,15 +4,12 @@ use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
 
 use super::{Error, Metadata, Result, Revision, RevisionId};
+use crate::define_version_enum;
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Version {
-    V1 = 1,
-}
-
-impl Version {
-    pub const LATEST: Version = Version::V1;
+define_version_enum! {
+    enum Version {
+        V1 = 1,
+    }
 }
 
 #[derive(Debug)]
@@ -69,7 +66,7 @@ impl Database {
         self.db.execute_batch(
             "
             CREATE TABLE metadata (
-                uuid BLOB
+                data BLOB
             );
 
             CREATE TABLE revisions (
@@ -87,28 +84,30 @@ impl Database {
             .db
             .query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
-        match version {
-            0 => Ok(None),
-            1 => Ok(Some(Version::V1)),
-            _ => Err(Error::UnsupportedVersion),
+        if version == 0 {
+            return Ok(None);
         }
+
+        Version::from_u32(version).map(Some)
     }
 
     fn write_version(&self, version: Version) -> Result<()> {
         self.db
-            .execute(&format!("PRAGMA user_version = {}", version as u32), [])?;
+            .execute(&format!("PRAGMA user_version = {}", version.as_u32()), [])?;
         Ok(())
     }
 
     fn read_metadata(&self) -> Result<Metadata> {
-        Ok(self.db.query_row("SELECT uuid FROM metadata", [], |row| {
-            Ok(Metadata { uuid: row.get(0)? })
-        })?)
+        let data: Vec<u8> = self
+            .db
+            .query_row("SELECT data FROM metadata", [], |row| row.get(0))?;
+        Metadata::deserialize(&data)
     }
 
     fn write_metadata(&self, metadata: Metadata) -> Result<()> {
+        let data = metadata.serialize()?;
         self.db
-            .execute("INSERT INTO metadata (uuid) VALUES (?1)", [metadata.uuid])?;
+            .execute("INSERT INTO metadata (data) VALUES (?1)", [data])?;
         Ok(())
     }
 

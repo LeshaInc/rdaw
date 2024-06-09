@@ -3,6 +3,7 @@
 pub mod arrangement;
 pub mod audio;
 pub mod blob;
+pub mod document;
 mod error;
 pub mod item;
 pub mod source;
