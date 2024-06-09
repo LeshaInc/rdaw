@@ -17,8 +17,8 @@ use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::{Backend, BoxStream};
 use rdaw_ui_kit::Theme;
 
-pub fn app_view<B: Backend>(main_arrangement: ArrangementId) -> impl IntoView {
-    views::arrangement::<B>(main_arrangement)
+pub fn app_view(main_arrangement: ArrangementId) -> impl IntoView {
+    views::arrangement(main_arrangement)
         .style(|s| s.width_full().height_full())
         .window_scale(move || 1.0)
 }
@@ -76,8 +76,7 @@ pub fn stream_for_each<T: Send + 'static>(
     );
 }
 
-pub fn run<B: Backend>(backend: B) {
-    let backend = Arc::new(backend);
+pub fn run(backend: Arc<dyn Backend>) {
     let executor = Arc::new(Executor::new());
 
     provide_context(backend.clone());
@@ -96,7 +95,7 @@ pub fn run<B: Backend>(backend: B) {
     let main_arrangement = block_on(async move { backend.create_arrangement().await }).unwrap();
 
     floem::launch(move || {
-        let view = app_view::<B>(main_arrangement)
+        let view = app_view(main_arrangement)
             .keyboard_navigatable()
             .into_view();
         let id = view.id();

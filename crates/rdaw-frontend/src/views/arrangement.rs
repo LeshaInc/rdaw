@@ -11,7 +11,6 @@ use floem::views::{
 use floem::{IntoView, View};
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::track::{TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
-use rdaw_api::Backend;
 use rdaw_core::collections::{HashMap, HashSet, ImVec};
 
 use crate::api;
@@ -36,21 +35,21 @@ struct State {
     track_heights: RwSignal<HashMap<TrackNode, RwSignal<f64>>>,
 }
 
-pub fn arrangement<B: Backend>(id: ArrangementId) -> impl IntoView {
+pub fn arrangement(id: ArrangementId) -> impl IntoView {
     let main_track = RwSignal::new(None);
 
-    api::get_arrangement_main_track::<B>(id, move |id| {
+    api::get_arrangement_main_track(id, move |id| {
         main_track.set(Some(id));
     });
 
     dyn_container(move || match main_track.get() {
-        Some(id) => track_tree::<B>(id).into_any(),
+        Some(id) => track_tree(id).into_any(),
         None => empty().into_any(),
     })
     .style(|s| s.width_full().height_full())
 }
 
-fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
+fn track_tree(root: TrackId) -> impl IntoView {
     let state = State {
         selection: RwSignal::new(None),
         transitive_selection: RwSignal::new(HashSet::default()),
@@ -61,11 +60,11 @@ fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
         track_heights: RwSignal::new(HashMap::default()),
     };
 
-    api::get_track_hierarchy::<B>(root, move |new_hierarchy| {
+    api::get_track_hierarchy(root, move |new_hierarchy| {
         state.hierarchy.set(new_hierarchy);
     });
 
-    api::subscribe_track_hierarchy::<B>(root, move |event| {
+    api::subscribe_track_hierarchy(root, move |event| {
         let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event else {
             return;
         };
@@ -101,7 +100,7 @@ fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
         VirtualItemSize::Fn(Box::new(get_height)),
         move || order.get(),
         move |node| *node,
-        move |node| track_control_node::<B>(state, node),
+        move |node| track_control_node(state, node),
     );
 
     let items_tree = virtual_stack(
@@ -109,7 +108,7 @@ fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
         VirtualItemSize::Fn(Box::new(move |(_, node)| get_height(node))),
         move || order.get().enumerate(),
         move |(idx, node)| (*node, idx % 2 == 0),
-        move |(idx, node)| track_items_node::<B>(state, node, idx % 2 == 0),
+        move |(idx, node)| track_items_node(state, node, idx % 2 == 0),
     );
 
     let scroll_delta = RwSignal::new(Vec2::ZERO);
@@ -140,7 +139,7 @@ fn track_tree<B: Backend>(root: TrackId) -> impl IntoView {
     .debug_name("TrackTree")
 }
 
-fn track_control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoView {
+fn track_control_node(state: State, node: TrackNode) -> impl IntoView {
     let is_resizing = RwSignal::new(false);
     let prev_resizing_y = RwSignal::new(None);
 
@@ -162,7 +161,7 @@ fn track_control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoVie
         }
     };
 
-    let control_view = track_control::<B>(node.id).into_view();
+    let control_view = track_control(node.id).into_view();
     let control_view_id = control_view.id();
 
     let track_resizer = empty();
@@ -359,7 +358,7 @@ fn track_control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoVie
             _ => return,
         };
 
-        api::move_track::<B>(old_parent, old_index, new_parent, new_index);
+        api::move_track(old_parent, old_index, new_parent, new_index);
     };
 
     let marker = move |location| {
@@ -455,7 +454,7 @@ fn track_control_node<B: Backend>(state: State, node: TrackNode) -> impl IntoVie
     })
 }
 
-fn track_items_node<B: Backend>(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
+fn track_items_node(state: State, node: TrackNode, is_even: bool) -> impl IntoView {
     let track_height = create_memo(move |_| {
         state.track_heights.with(|v| {
             v.get(&node)
@@ -464,7 +463,7 @@ fn track_items_node<B: Backend>(state: State, node: TrackNode, is_even: bool) ->
         })
     });
 
-    container(track_items::<B>(node.id, is_even))
+    container(track_items(node.id, is_even))
         .debug_name("TrackItemsNode")
         .style(move |s| s.width_full().height(track_height.get()))
 }

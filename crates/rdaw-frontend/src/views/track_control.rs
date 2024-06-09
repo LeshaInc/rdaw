@@ -3,18 +3,17 @@ use floem::reactive::{create_effect, RwSignal};
 use floem::views::{h_stack, text_input, Decorators};
 use floem::IntoView;
 use rdaw_api::track::{TrackEvent, TrackId};
-use rdaw_api::Backend;
 use rdaw_ui_kit::{button, ColorKind, Level};
 
 use crate::api;
 
-pub fn track_control<B: Backend>(id: TrackId) -> impl IntoView {
+pub fn track_control(id: TrackId) -> impl IntoView {
     let name = RwSignal::new(String::new());
     let editor_name = RwSignal::new(String::new());
 
-    api::get_track_name::<B>(id, move |new_name| name.set(new_name));
+    api::get_track_name(id, move |new_name| name.set(new_name));
 
-    api::subscribe_track::<B>(id, move |event| {
+    api::subscribe_track(id, move |event| {
         if let TrackEvent::NameChanged { new_name } = event {
             name.set(new_name)
         }
@@ -28,7 +27,7 @@ pub fn track_control<B: Backend>(id: TrackId) -> impl IntoView {
             return editor_name;
         };
 
-        api::set_track_name::<B>(id, editor_name.clone());
+        api::set_track_name(id, editor_name.clone());
 
         editor_name
     });
@@ -38,8 +37,8 @@ pub fn track_control<B: Backend>(id: TrackId) -> impl IntoView {
     });
 
     let add_child = move |_ev: &Event| {
-        api::create_track::<B>(move |child_id| {
-            api::append_track_child::<B>(id, child_id);
+        api::create_track(move |child_id| {
+            api::append_track_child(id, child_id);
         });
     };
 

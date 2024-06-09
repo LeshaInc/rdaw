@@ -14,7 +14,7 @@ use rdaw_api::{Backend, Error};
 
 use crate::{spawn, stream_for_each};
 
-pub fn get_backend<B: Backend>() -> Arc<B> {
+pub fn get_backend() -> Arc<dyn Backend> {
     use_context().expect("no backend in scope")
 }
 
@@ -27,8 +27,8 @@ macro_rules! generate_method {
     {
         fn $method:ident($($arg:ident: $ArgTy:ty),* $(,)?) -> $RetTy:ty;
     } => {
-        pub fn $method<B: Backend>($($arg: $ArgTy,)* callback: impl FnOnce($RetTy) + 'static) {
-            let backend = get_backend::<B>();
+        pub fn $method($($arg: $ArgTy,)* callback: impl FnOnce($RetTy) + 'static) {
+            let backend = get_backend();
             spawn(
                 async move { backend.$method($($arg,)*).await },
                 move |res| match res {
@@ -42,8 +42,8 @@ macro_rules! generate_method {
     {
         fn $method:ident($($arg:ident: $ArgTy:ty),* $(,)?);
     } => {
-        pub fn $method<B: Backend>($($arg: $ArgTy,)*) {
-            let backend = get_backend::<B>();
+        pub fn $method($($arg: $ArgTy,)*) {
+            let backend = get_backend();
             spawn(
                 async move { backend.$method($($arg,)*).await },
                 move |res| if let Err(e) = res {
@@ -56,11 +56,11 @@ macro_rules! generate_method {
     {
         #[sub] fn $method:ident($($arg:ident: $ArgTy:ty),* $(,)?) -> $RetTy:ty;
     } => {
-        pub fn $method<B: Backend>(
+        pub fn $method(
             $($arg: $ArgTy,)*
             callback: impl Fn($RetTy) + 'static,
         ) {
-            let backend = get_backend::<B>();
+            let backend = get_backend();
             spawn(
                 async move { backend.$method($($arg,)*).await },
                 move |stream| match stream {

@@ -62,8 +62,6 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
     let mut func_impls = Vec::new();
 
     for func in &mut funcs {
-        let orig_func_sig = func.sig.clone();
-
         let mut is_sub = false;
         func.attrs.retain(|attr| {
             is_sub = attr.path().is_ident("sub");
@@ -155,7 +153,7 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         func.sig.asyncness = None;
 
         let new_output_ty = quote_spanned! { func_ret_ty_res.span() =>
-            impl ::core::future::Future<Output = #func_ret_ty_res> + Send
+            std::pin::Pin<Box<dyn std::future::Future<Output = #func_ret_ty_res> + Send + '_>>
         };
 
         func.sig.output = syn::ReturnType::Type(
@@ -208,10 +206,14 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
             }
         };
 
+        let func_sig = &func.sig;
+
         let func_impl = quote! {
             #[allow(unused_variables)]
-            #orig_func_sig {
-                #func_body
+            #func_sig {
+                Box::pin(async move {
+                    #func_body
+                })
             }
         };
 

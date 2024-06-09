@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::thread;
 
 use futures_lite::future::block_on;
@@ -17,5 +18,5 @@ fn main() {
     let client_clone = client.clone();
     thread::spawn(move || block_on(client_clone.handle()).unwrap());
 
-    rdaw_frontend::run(client);
+    rdaw_frontend::run(Arc::new(client));
 }
