@@ -18,7 +18,7 @@ pub trait ArrangementOperations {
 
     async fn get_arrangement_name(&self, id: ArrangementId) -> Result<String>;
 
-    async fn set_arrangement_name(&self, id: ArrangementId, name: String) -> Result<()>;
+    async fn set_arrangement_name(&self, id: ArrangementId, new_name: String) -> Result<()>;
 
     async fn get_arrangement_main_track(&self, id: ArrangementId) -> Result<TrackId>;
 

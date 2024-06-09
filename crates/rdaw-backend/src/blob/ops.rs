@@ -1,32 +1,16 @@
 use std::path::PathBuf;
 
-use rdaw_api::blob::{BlobId, BlobOperations};
-use rdaw_api::{Error, Result};
+use rdaw_api::blob::{BlobId, BlobOperations, BlobRequest, BlobResponse};
+use rdaw_api::{BackendProtocol, Error, Result};
 use tracing::instrument;
 
 use super::Blob;
-use crate::{Backend, BackendHandle};
+use crate::Backend;
 
-crate::dispatch::define_dispatch_ops! {
-    pub enum BlobOperation;
-
-    impl Backend {
-        pub fn dispatch_blob_operation;
-    }
-
-    impl BlobOperations for BackendHandle;
-
-    CreateInternalBlob => create_internal_blob(
-        data: Vec<u8>,
-    ) -> Result<BlobId>;
-
-    CreateExternalBlob => create_external_blob(
-        path: PathBuf,
-    ) -> Result<BlobId>;
-}
-
+#[rdaw_rpc::handler(protocol = BackendProtocol, operations = BlobOperations)]
 impl Backend {
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn create_internal_blob(&mut self, data: Vec<u8>) -> Result<BlobId> {
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);
@@ -38,6 +22,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn create_external_blob(&mut self, path: PathBuf) -> Result<BlobId> {
         let data = std::fs::read(&path).map_err(|error| Error::new_filesystem(&path, error))?;
 

@@ -18,6 +18,7 @@ struct TestBackend;
 
 #[handler(protocol = TestProtocol, operations = FooOperations)]
 impl TestBackend {
+    #[handler]
     fn get_foo(&self) -> Result<i32> {
         Ok(1)
     }

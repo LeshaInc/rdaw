@@ -4,7 +4,6 @@ use rdaw_api::audio::AudioMetadata;
 use rdaw_api::blob::BlobId;
 use rdaw_api::source::AudioSourceId;
 
-pub use self::ops::AudioSourceOperation;
 use crate::{Object, Uuid};
 
 #[derive(Debug, Clone)]

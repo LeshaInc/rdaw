@@ -4,7 +4,6 @@ use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::track::TrackId;
 
-pub use self::ops::ArrangementOperation;
 use crate::{Hub, Object, Uuid};
 
 #[derive(Debug, Clone)]

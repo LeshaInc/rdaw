@@ -2,23 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use slotmap::SlotMap;
 
-use crate::arrangement::Arrangement;
-use crate::blob::Blob;
-use crate::item::AudioItem;
-use crate::source::AudioSource;
-use crate::tempo_map::TempoMap;
-use crate::track::Track;
 use crate::Object;
-
-#[derive(Debug, Default)]
-pub struct Hub {
-    pub arrangements: Storage<Arrangement>,
-    pub audio_items: Storage<AudioItem>,
-    pub audio_sources: Storage<AudioSource>,
-    pub blobs: Storage<Blob>,
-    pub tempo_maps: Storage<TempoMap>,
-    pub tracks: Storage<Track>,
-}
 
 #[derive(Debug)]
 pub struct Storage<T: Object> {

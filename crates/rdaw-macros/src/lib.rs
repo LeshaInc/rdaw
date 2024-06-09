@@ -118,9 +118,7 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
                 rdaw_rpc::StreamId
             });
 
-            let Some((orig_ok_ty, result_ty)) =
-                replace_result_ok_type(func_ret_ty_res, replacement)
-            else {
+            let Some((orig_ok_ty, _)) = replace_result_ok_type(func_ret_ty_res, replacement) else {
                 emit_error!(
                     func.sig.output,
                     "method marked with `#[subscribe]` must return a `Result<BoxStream<T>>`"
@@ -136,7 +134,7 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
                 continue;
             };
 
-            let res_variant = quote_spanned!(variant_span => #variant_ident(#result_ty));
+            let res_variant = quote_spanned!(variant_span => #variant_ident(rdaw_rpc::StreamId));
             let event_variant = quote_spanned!(variant_span => #variant_ident(#event_ty));
 
             (res_variant, Some(event_variant))
@@ -178,7 +176,7 @@ pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
                     .map_err(|_| #error_path_as::invalid_type())?;
 
                 let id = match res {
-                    #res_enum_ident::#variant_ident(v) => v?,
+                    #res_enum_ident::#variant_ident(v) => v,
                     _ => return Err(#error_path_as::invalid_type()),
                 };
 
@@ -343,12 +341,32 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
     let req_ident = syn::Ident::new(&format!("{base}Request"), ident.span());
     let res_ident = syn::Ident::new(&format!("{base}Response"), ident.span());
 
+    let method_name = syn::Ident::new(
+        &format!("handle_{}_request", base.to_case(Case::Snake)),
+        ident.span(),
+    );
+
     let mut match_cases = Vec::new();
 
-    for item in &item.items {
+    for item in &mut item.items {
         let syn::ImplItem::Fn(func) = item else {
             continue;
         };
+
+        let mut is_handler = false;
+        let mut is_sub_handler = false;
+
+        func.attrs.retain(|attr| {
+            let this_is_handler = attr.path().is_ident("handler");
+            let this_is_sub_handler = attr.path().is_ident("sub_handler");
+            is_handler = this_is_handler;
+            is_sub_handler = this_is_sub_handler;
+            !(this_is_handler || this_is_sub_handler)
+        });
+
+        if !(is_handler || is_sub_handler) {
+            continue;
+        }
 
         let func_name = &func.sig.ident;
         let name = syn::Ident::new(
@@ -372,26 +390,45 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
             })
             .collect::<Vec<_>>();
 
-        match_cases.push(quote! {
-            #req_ident::#name { #(#args,)* } => {
-                let payload = self
-                    .#func_name(#(#args,)*)
-                    .map(#res_ident::#name)
-                    .map(|v| v.into());
-                transport
-                    .send(rdaw_rpc::ServerMessage::Response { id, payload })
-                    .await
+        let match_case = if is_sub_handler {
+            quote! {
+                #req_ident::#name { #(#args,)* } => {
+                    let payload = self
+                        .#func_name(#(#args,)*)
+                        .map(#res_ident::#name)
+                        .map(|v| v.into());
+                    transport
+                        .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
+                        .await
+                }
             }
-        });
+        } else {
+            quote! {
+                #req_ident::#name { #(#args,)* } => {
+                    let payload = self
+                        .#func_name(#(#args,)*)
+                        .map(#res_ident::#name)
+                        .map(|v| v.into());
+                    transport
+                        .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
+                        .await
+                }
+            }
+        };
+
+        match_cases.push(match_case);
     }
 
     let handler = quote! {
-        async fn handle_foo_request<T: rdaw_rpc::transport::ServerTransport<#protocol_path>>(
+        pub async fn #method_name<T: rdaw_rpc::transport::ServerTransport<#protocol_path>>(
             &mut self,
             transport: T,
-            id: rdaw_rpc::RequestId,
+            req_id: rdaw_rpc::RequestId,
             req: #req_ident,
         ) -> Result<(), #error_path> {
+            #[allow(dead_code)]
+            fn _suppress<T: #ops_path>() {}
+
             match req {
                 #(#match_cases)*
             }

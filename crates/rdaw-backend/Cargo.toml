@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 rdaw-api.workspace = true
 rdaw-core.workspace = true
+rdaw-rpc.workspace = true
 
 async-channel.workspace = true
 blake3.workspace = true

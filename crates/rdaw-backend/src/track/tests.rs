@@ -1,60 +1,50 @@
-use futures_lite::future::block_on;
 use futures_lite::StreamExt;
-use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackId, TrackNode};
+use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackNode, TrackOperations};
 use rdaw_api::{Error, Result};
-use slotmap::KeyData;
 
-use crate::Backend;
-
-fn invalid_track_id() -> TrackId {
-    TrackId::from(KeyData::from_ffi(u64::MAX))
-}
+use crate::tests::{invalid_track_id, run_test};
 
 #[test]
 fn list_tracks() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        let tracks = client.list_tracks().await?;
+        assert!(tracks.is_empty());
 
-    let tracks = backend.list_tracks()?;
-    assert!(tracks.is_empty());
+        let track1 = client.create_track().await?;
+        let track2 = client.create_track().await?;
 
-    let track1 = backend.create_track()?;
-    let track2 = backend.create_track()?;
+        let mut tracks = client.list_tracks().await?;
+        tracks.sort_unstable();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(tracks, vec![track1, track2]);
 
-    let mut tracks = backend.list_tracks()?;
-    tracks.sort_unstable();
-    assert_eq!(tracks.len(), 2);
-    assert_eq!(tracks, vec![track1, track2]);
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn create_track() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        let track1 = client.create_track().await?;
+        let track2 = client.create_track().await?;
+        assert!(track1 != track2);
 
-    let track1 = backend.create_track()?;
-    let track2 = backend.create_track()?;
-    assert!(track1 != track2);
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn subscribe_track() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client.subscribe_track(invalid_track_id()).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.subscribe_track(invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let track = client.create_track().await?;
+        let mut stream = client.subscribe_track(track).await?;
 
-    let track = backend.create_track()?;
-    let mut stream = backend.subscribe_track(track)?;
-
-    backend.set_track_name(track, "New name".into())?;
-
-    block_on(async move {
-        backend.update().await;
+        client.set_track_name(track, "New name".into()).await?;
 
         assert_eq!(
             stream.next().await,
@@ -62,33 +52,29 @@ fn subscribe_track() -> Result<()> {
                 new_name: "New name".into()
             })
         );
-    });
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn subscribe_track_hierarchy() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client.subscribe_track_hierarchy(invalid_track_id()).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.subscribe_track_hierarchy(invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let root = client.create_track().await?;
+        let mut stream = client.subscribe_track_hierarchy(root).await?;
 
-    let root = backend.create_track()?;
-    let mut stream = backend.subscribe_track_hierarchy(root)?;
+        let child1 = client.create_track().await?;
+        let child2 = client.create_track().await?;
+        client.append_track_child(root, child1).await?;
+        client.append_track_child(root, child2).await?;
 
-    let child1 = backend.create_track()?;
-    let child2 = backend.create_track()?;
-    backend.append_track_child(root, child1)?;
-    backend.append_track_child(root, child2)?;
-
-    let grandchild = backend.create_track()?;
-    backend.append_track_child(child1, grandchild)?;
-
-    block_on(async move {
-        backend.update().await;
+        let grandchild = client.create_track().await?;
+        client.append_track_child(child1, grandchild).await?;
 
         assert_eq!(
             stream.next().await,
@@ -113,9 +99,9 @@ fn subscribe_track_hierarchy() -> Result<()> {
                 new_children: vec![grandchild].into()
             })
         );
-    });
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
@@ -126,244 +112,257 @@ fn subscribe_track_view() -> Result<()> {
 
 #[test]
 fn get_set_track_name() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client.get_track_name(invalid_track_id()).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.get_track_name(invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let track = client.create_track().await?;
+        assert_eq!(client.get_track_name(track).await?, "Track 1");
+        client.set_track_name(track, "New name".into()).await?;
+        assert_eq!(client.get_track_name(track).await?, "New name");
 
-    let track = backend.create_track()?;
-    assert_eq!(backend.get_track_name(track)?, "Track 1");
-    backend.set_track_name(track, "New name".into())?;
-    assert_eq!(backend.get_track_name(track)?, "New name");
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn get_track_children() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client.get_track_children(invalid_track_id()).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.get_track_children(invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let root = client.create_track().await?;
+        let child1 = client.create_track().await?;
+        let child2 = client.create_track().await?;
+        client.append_track_child(root, child1).await?;
+        client.append_track_child(root, child2).await?;
+        assert_eq!(client.get_track_children(root).await?, vec![child1, child2]);
 
-    let root = backend.create_track()?;
-    let child1 = backend.create_track()?;
-    let child2 = backend.create_track()?;
-    backend.append_track_child(root, child1)?;
-    backend.append_track_child(root, child2)?;
-    assert_eq!(backend.get_track_children(root)?, vec![child1, child2]);
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn get_track_hierarchy() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client.get_track_hierarchy(invalid_track_id()).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.get_track_hierarchy(invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let root = client.create_track().await?;
+        let child1 = client.create_track().await?;
+        let child2 = client.create_track().await?;
+        let grandchild = client.create_track().await?;
+        client.append_track_child(root, child1).await?;
+        client.append_track_child(root, child2).await?;
+        client.append_track_child(child1, grandchild).await?;
 
-    let root = backend.create_track()?;
-    let child1 = backend.create_track()?;
-    let child2 = backend.create_track()?;
-    let grandchild = backend.create_track()?;
-    backend.append_track_child(root, child1)?;
-    backend.append_track_child(root, child2)?;
-    backend.append_track_child(child1, grandchild)?;
+        let hierarchy = client.get_track_hierarchy(child1).await?;
+        assert_eq!(hierarchy.root(), child1);
+        assert_eq!(
+            hierarchy.children(child1).collect::<Vec<_>>(),
+            vec![grandchild]
+        );
 
-    let hierarchy = backend.get_track_hierarchy(child1)?;
-    assert_eq!(hierarchy.root(), child1);
-    assert_eq!(
-        hierarchy.children(child1).collect::<Vec<_>>(),
-        vec![grandchild]
-    );
+        let hierarchy = client.get_track_hierarchy(child2).await?;
+        assert_eq!(hierarchy.root(), child2);
+        assert_eq!(hierarchy.children(child2).count(), 0);
 
-    let hierarchy = backend.get_track_hierarchy(child2)?;
-    assert_eq!(hierarchy.root(), child2);
-    assert_eq!(hierarchy.children(child2).count(), 0);
+        let hierarchy = client.get_track_hierarchy(root).await?;
+        assert_eq!(hierarchy.root(), root);
+        assert_eq!(
+            hierarchy.children(root).collect::<Vec<_>>(),
+            vec![child1, child2]
+        );
+        assert_eq!(
+            hierarchy.children(child1).collect::<Vec<_>>(),
+            vec![grandchild]
+        );
+        assert_eq!(hierarchy.children(child2).count(), 0,);
+        assert_eq!(hierarchy.children(grandchild).count(), 0,);
 
-    let hierarchy = backend.get_track_hierarchy(root)?;
-    assert_eq!(hierarchy.root(), root);
-    assert_eq!(
-        hierarchy.children(root).collect::<Vec<_>>(),
-        vec![child1, child2]
-    );
-    assert_eq!(
-        hierarchy.children(child1).collect::<Vec<_>>(),
-        vec![grandchild]
-    );
-    assert_eq!(hierarchy.children(child2).count(), 0,);
-    assert_eq!(hierarchy.children(grandchild).count(), 0,);
+        let mut nodes = Vec::new();
+        hierarchy.dfs(root, |node| nodes.push(node));
 
-    let mut nodes = Vec::new();
-    hierarchy.dfs(root, |node| nodes.push(node));
+        assert_eq!(
+            nodes,
+            vec![
+                TrackNode {
+                    id: root,
+                    index: 0,
+                    level: 0,
+                    parent: None
+                },
+                TrackNode {
+                    id: child1,
+                    index: 0,
+                    level: 1,
+                    parent: Some(root)
+                },
+                TrackNode {
+                    id: grandchild,
+                    index: 0,
+                    level: 2,
+                    parent: Some(child1)
+                },
+                TrackNode {
+                    id: child2,
+                    index: 1,
+                    level: 1,
+                    parent: Some(root)
+                }
+            ]
+        );
 
-    assert_eq!(
-        nodes,
-        vec![
-            TrackNode {
-                id: root,
-                index: 0,
-                level: 0,
-                parent: None
-            },
-            TrackNode {
-                id: child1,
-                index: 0,
-                level: 1,
-                parent: Some(root)
-            },
-            TrackNode {
-                id: grandchild,
-                index: 0,
-                level: 2,
-                parent: Some(child1)
-            },
-            TrackNode {
-                id: child2,
-                index: 1,
-                level: 1,
-                parent: Some(root)
-            }
-        ]
-    );
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn append_track_child() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client
+                .append_track_child(invalid_track_id(), invalid_track_id())
+                .await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.append_track_child(invalid_track_id(), invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let parent = client.create_track().await?;
 
-    let parent = backend.create_track()?;
+        assert!(matches!(
+            client.append_track_child(parent, invalid_track_id()).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.append_track_child(parent, invalid_track_id()),
-        Err(Error::InvalidId),
-    ));
+        let child = client.create_track().await?;
 
-    let child = backend.create_track()?;
+        assert!(matches!(
+            client.append_track_child(invalid_track_id(), child).await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.append_track_child(invalid_track_id(), child),
-        Err(Error::InvalidId),
-    ));
+        client.append_track_child(parent, child).await?;
+        assert_eq!(client.get_track_children(parent).await?, vec![child]);
 
-    backend.append_track_child(parent, child)?;
-    assert_eq!(backend.get_track_children(parent)?, vec![child]);
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn insert_track_child() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client
+                .insert_track_child(invalid_track_id(), invalid_track_id(), 0)
+                .await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.insert_track_child(invalid_track_id(), invalid_track_id(), 0),
-        Err(Error::InvalidId),
-    ));
+        let parent = client.create_track().await?;
 
-    let parent = backend.create_track()?;
+        assert!(matches!(
+            client
+                .insert_track_child(parent, invalid_track_id(), 0)
+                .await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.insert_track_child(parent, invalid_track_id(), 0),
-        Err(Error::InvalidId),
-    ));
+        let child = client.create_track().await?;
 
-    let child = backend.create_track()?;
+        assert!(matches!(
+            client
+                .insert_track_child(invalid_track_id(), child, 0)
+                .await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.insert_track_child(invalid_track_id(), child, 0),
-        Err(Error::InvalidId),
-    ));
+        assert!(matches!(
+            client.insert_track_child(parent, child, 1).await,
+            Err(Error::IndexOutOfBounds),
+        ));
 
-    assert!(matches!(
-        backend.insert_track_child(parent, child, 1),
-        Err(Error::IndexOutOfBounds),
-    ));
+        client.insert_track_child(parent, child, 0).await?;
+        assert_eq!(client.get_track_children(parent).await?, vec![child]);
 
-    backend.insert_track_child(parent, child, 0)?;
-    assert_eq!(backend.get_track_children(parent)?, vec![child]);
+        let child0 = client.create_track().await?;
+        client.insert_track_child(parent, child0, 0).await?;
+        assert_eq!(
+            client.get_track_children(parent).await?,
+            vec![child0, child]
+        );
 
-    let child0 = backend.create_track()?;
-    backend.insert_track_child(parent, child0, 0)?;
-    assert_eq!(backend.get_track_children(parent)?, vec![child0, child]);
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn move_track() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client
+                .move_track(invalid_track_id(), 0, invalid_track_id(), 0)
+                .await,
+            Err(Error::InvalidId),
+        ));
 
-    assert!(matches!(
-        backend.move_track(invalid_track_id(), 0, invalid_track_id(), 0),
-        Err(Error::InvalidId),
-    ));
+        let root = client.create_track().await?;
+        let child1 = client.create_track().await?;
+        let child2 = client.create_track().await?;
+        let grandchild = client.create_track().await?;
+        client.append_track_child(root, child1).await?;
+        client.append_track_child(root, child2).await?;
+        client.append_track_child(child1, grandchild).await?;
 
-    let root = backend.create_track()?;
-    let child1 = backend.create_track()?;
-    let child2 = backend.create_track()?;
-    let grandchild = backend.create_track()?;
-    backend.append_track_child(root, child1)?;
-    backend.append_track_child(root, child2)?;
-    backend.append_track_child(child1, grandchild)?;
+        client.move_track(root, 0, root, 1).await?;
 
-    backend.move_track(root, 0, root, 1)?;
+        assert_eq!(client.get_track_children(root).await?, vec![child2, child1]);
 
-    assert_eq!(backend.get_track_children(root)?, vec![child2, child1]);
+        client.move_track(root, 1, child2, 0).await?;
 
-    backend.move_track(root, 1, child2, 0)?;
+        assert_eq!(client.get_track_children(root).await?, vec![child2]);
+        assert_eq!(client.get_track_children(child2).await?, vec![child1]);
 
-    assert_eq!(backend.get_track_children(root)?, vec![child2]);
-    assert_eq!(backend.get_track_children(child2)?, vec![child1]);
+        assert!(matches!(
+            client.move_track(root, 0, child2, 0).await,
+            Err(Error::RecursiveTrack)
+        ));
 
-    assert!(matches!(
-        backend.move_track(root, 0, child2, 0),
-        Err(Error::RecursiveTrack)
-    ));
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn remove_track_child() -> Result<()> {
-    let mut backend = Backend::new();
+    run_test(|client| async move {
+        assert!(matches!(
+            client.remove_track_child(invalid_track_id(), 0).await,
+            Err(Error::InvalidId)
+        ));
 
-    assert!(matches!(
-        backend.remove_track_child(invalid_track_id(), 0),
-        Err(Error::InvalidId)
-    ));
+        let root = client.create_track().await?;
+        let child1 = client.create_track().await?;
+        let child2 = client.create_track().await?;
+        client.append_track_child(root, child1).await?;
+        client.append_track_child(root, child2).await?;
 
-    let root = backend.create_track()?;
-    let child1 = backend.create_track()?;
-    let child2 = backend.create_track()?;
-    backend.append_track_child(root, child1)?;
-    backend.append_track_child(root, child2)?;
+        assert!(matches!(
+            client.remove_track_child(child1, 0).await,
+            Err(Error::IndexOutOfBounds)
+        ));
 
-    assert!(matches!(
-        backend.remove_track_child(child1, 0),
-        Err(Error::IndexOutOfBounds)
-    ));
+        client.remove_track_child(root, 0).await?;
+        assert_eq!(client.get_track_children(root).await?, vec![child2]);
+        client.remove_track_child(root, 0).await?;
+        assert_eq!(client.get_track_children(root).await?, vec![]);
 
-    backend.remove_track_child(root, 0)?;
-    assert_eq!(backend.get_track_children(root)?, vec![child2]);
-    backend.remove_track_child(root, 0)?;
-    assert_eq!(backend.get_track_children(root)?, vec![]);
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]

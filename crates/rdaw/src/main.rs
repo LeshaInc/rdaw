@@ -1,12 +1,21 @@
+use std::thread;
+
 use futures_lite::future::block_on;
+use rdaw_backend::Backend;
+use rdaw_rpc::{transport, Client};
 
 fn main() {
     tracing_subscriber::fmt::init();
 
-    let backend = rdaw_backend::Backend::new();
-    let handle = backend.handle();
+    let (client_transport, server_transport) = transport::local(None);
 
-    std::thread::spawn(move || block_on(backend.run()));
+    let mut backend = Backend::new(server_transport);
+    thread::spawn(move || block_on(backend.handle()).unwrap());
 
-    rdaw_frontend::run(handle);
+    let client = Client::new(client_transport);
+
+    let client_clone = client.clone();
+    thread::spawn(move || block_on(client_clone.handle()).unwrap());
+
+    rdaw_frontend::run(client);
 }

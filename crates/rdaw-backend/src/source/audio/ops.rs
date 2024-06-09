@@ -1,68 +1,54 @@
 use rdaw_api::audio::AudioMetadata;
 use rdaw_api::blob::BlobId;
-use rdaw_api::source::{AudioSourceEvent, AudioSourceId, AudioSourceOperations};
-use rdaw_api::{BoxStream, Result};
+use rdaw_api::source::{
+    AudioSourceId, AudioSourceOperations, AudioSourceRequest, AudioSourceResponse,
+};
+use rdaw_api::{BackendProtocol, Result};
+use rdaw_rpc::StreamId;
+use tracing::instrument;
 
-use crate::{Backend, BackendHandle};
+use crate::Backend;
 
-crate::dispatch::define_dispatch_ops! {
-    pub enum AudioSourceOperation;
-
-    impl Backend {
-        pub fn dispatch_audio_source_operation;
-    }
-
-    impl AudioSourceOperations for BackendHandle;
-
-    ListAudioSources => list_audio_sources() -> Result<Vec<AudioSourceId>>;
-
-    CreateAudioSource => create_audio_source(
-        blob: BlobId,
-    ) -> Result<AudioSourceId>;
-
-    SubscribeAudioSource => subscribe_audio_source(
-        id: AudioSourceId,
-    ) -> Result<BoxStream<AudioSourceEvent>>;
-
-    GetAudioSourceName => get_audio_source_name(
-        id: AudioSourceId,
-    ) -> Result<String>;
-
-    SetAudioSourceName => set_audio_source_name(
-        id: AudioSourceId,
-        new_name: String,
-    ) -> Result<()>;
-
-    GetAudioSourceMetadata => get_audio_source_metadata(
-        id: AudioSourceId,
-    ) -> Result<AudioMetadata>;
-}
-
+#[rdaw_rpc::handler(protocol = BackendProtocol, operations = AudioSourceOperations)]
 impl Backend {
+    #[instrument(skip_all, err)]
+    #[handler]
     pub fn list_audio_sources(&self) -> Result<Vec<AudioSourceId>> {
         todo!()
     }
 
-    pub fn create_audio_source(&mut self, _blob: BlobId) -> Result<AudioSourceId> {
+    #[instrument(skip_all, err)]
+    #[handler]
+    pub fn create_audio_source(&mut self, blob_id: BlobId) -> Result<AudioSourceId> {
+        let _ = blob_id;
         todo!()
     }
 
-    pub fn subscribe_audio_source(
-        &mut self,
-        _id: AudioSourceId,
-    ) -> Result<BoxStream<AudioSourceEvent>> {
+    #[instrument(skip_all, err)]
+    #[handler]
+    pub fn subscribe_audio_source(&mut self, id: AudioSourceId) -> Result<StreamId> {
+        let _ = id;
         todo!()
     }
 
-    pub fn get_audio_source_name(&self, _id: AudioSourceId) -> Result<String> {
+    #[instrument(skip_all, err)]
+    #[handler]
+    pub fn get_audio_source_name(&self, id: AudioSourceId) -> Result<String> {
+        let _ = id;
         todo!()
     }
 
-    pub fn set_audio_source_name(&mut self, _id: AudioSourceId, _new_name: String) -> Result<()> {
+    #[instrument(skip_all, err)]
+    #[handler]
+    pub fn set_audio_source_name(&mut self, id: AudioSourceId, new_name: String) -> Result<()> {
+        let _ = (id, new_name);
         todo!()
     }
 
-    pub fn get_audio_source_metadata(&self, _id: AudioSourceId) -> Result<AudioMetadata> {
+    #[instrument(skip_all, err)]
+    #[handler]
+    pub fn get_audio_source_metadata(&self, id: AudioSourceId) -> Result<AudioMetadata> {
+        let _ = id;
         todo!()
     }
 }

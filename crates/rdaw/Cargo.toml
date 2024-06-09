@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 rdaw-backend.workspace = true
 rdaw-frontend.workspace = true
+rdaw-rpc.workspace = true
 
 futures-lite.workspace = true
 tracing-subscriber.workspace = true

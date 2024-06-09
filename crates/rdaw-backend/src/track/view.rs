@@ -7,7 +7,7 @@ use rstar::{RTree, RTreeObject, AABB};
 use slotmap::SecondaryMap;
 
 use super::Track;
-use crate::storage::Hub;
+use crate::hub::Hub;
 use crate::tempo_map::TempoMap;
 
 #[derive(Debug, Default)]

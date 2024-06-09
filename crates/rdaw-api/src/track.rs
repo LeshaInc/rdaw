@@ -30,35 +30,38 @@ pub trait TrackOperations {
     #[sub]
     async fn subscribe_track_hierarchy(
         &self,
-        root: TrackId,
+        id: TrackId,
     ) -> Result<BoxStream<TrackHierarchyEvent>>;
 
     #[sub]
-    async fn subscribe_track_view(&self, view_id: TrackViewId)
-        -> Result<BoxStream<TrackViewEvent>>;
+    async fn subscribe_track_view(&self, id: TrackViewId) -> Result<BoxStream<TrackViewEvent>>;
 
     async fn get_track_name(&self, id: TrackId) -> Result<String>;
 
-    async fn set_track_name(&self, id: TrackId, name: String) -> Result<()>;
+    async fn set_track_name(&self, id: TrackId, new_name: String) -> Result<()>;
 
-    async fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>>;
+    async fn get_track_children(&self, id: TrackId) -> Result<Vec<TrackId>>;
 
-    async fn get_track_hierarchy(&self, root: TrackId) -> Result<TrackHierarchy>;
+    async fn get_track_hierarchy(&self, id: TrackId) -> Result<TrackHierarchy>;
 
-    async fn append_track_child(&self, parent: TrackId, child: TrackId) -> Result<()>;
+    async fn append_track_child(&self, parent_id: TrackId, child_id: TrackId) -> Result<()>;
 
-    async fn insert_track_child(&self, parent: TrackId, child: TrackId, index: usize)
-        -> Result<()>;
+    async fn insert_track_child(
+        &self,
+        parent_id: TrackId,
+        child_id: TrackId,
+        index: usize,
+    ) -> Result<()>;
 
     async fn move_track(
         &self,
-        old_parent: TrackId,
+        old_parent_id: TrackId,
         old_index: usize,
-        new_parent: TrackId,
+        new_parent_id: TrackId,
         new_index: usize,
     ) -> Result<()>;
 
-    async fn remove_track_child(&self, parent: TrackId, index: usize) -> Result<()>;
+    async fn remove_track_child(&self, parent_id: TrackId, index: usize) -> Result<()>;
 
     async fn add_track_item(&self, track_id: TrackId, item: TrackItem) -> Result<TrackItemId>;
 

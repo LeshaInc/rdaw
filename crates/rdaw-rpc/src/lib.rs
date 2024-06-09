@@ -1,4 +1,6 @@
 mod client;
+mod id_allocator;
+mod subscribers;
 pub mod transport;
 
 pub use rdaw_macros::{
@@ -6,6 +8,8 @@ pub use rdaw_macros::{
 };
 
 pub use self::client::Client;
+pub use self::id_allocator::IdAllocator;
+pub use self::subscribers::Subscribers;
 
 pub trait Protocol: Send + Sync + 'static {
     type Req: Send + 'static;
@@ -28,9 +32,25 @@ pub trait ProtocolError: std::error::Error + Send + 'static {
 #[repr(transparent)]
 pub struct RequestId(pub u64);
 
+impl From<u64> for RequestId {
+    fn from(value: u64) -> Self {
+        RequestId(value)
+    }
+}
+
+pub type RequestIdAllocator = IdAllocator<RequestId>;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct StreamId(pub u64);
+
+impl From<u64> for StreamId {
+    fn from(value: u64) -> Self {
+        StreamId(value)
+    }
+}
+
+pub type StreamIdAllocator = IdAllocator<StreamId>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ClientMessage<P: Protocol> {

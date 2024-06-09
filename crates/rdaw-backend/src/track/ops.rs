@@ -1,127 +1,27 @@
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
-    TrackOperations, TrackViewEvent, TrackViewId, TrackViewItem,
+    TrackOperations, TrackRequest, TrackResponse, TrackViewEvent, TrackViewId, TrackViewItem,
 };
-use rdaw_api::{BoxStream, Error, Result};
+use rdaw_api::{BackendProtocol, Error, Result};
+use rdaw_rpc::StreamId;
 use slotmap::Key;
 use tracing::instrument;
 
 use super::Track;
-use crate::{Backend, BackendHandle};
+use crate::Backend;
 
-crate::dispatch::define_dispatch_ops! {
-    pub enum TrackOperation;
-
-    impl Backend {
-        pub fn dispatch_track_operation;
-    }
-
-    impl TrackOperations for BackendHandle;
-
-    ListTracks => list_tracks() -> Result<Vec<TrackId>>;
-
-    CreateTrack => create_track() -> Result<TrackId>;
-
-    SubscribeTrack => subscribe_track(
-        id: TrackId,
-    ) -> Result<BoxStream<TrackEvent>>;
-
-    SubscribeTrackHierarchy => subscribe_track_hierarchy(
-        root: TrackId,
-    ) -> Result<BoxStream<TrackHierarchyEvent>>;
-
-    SubscribeTrackView => subscribe_track_view(
-        view_id: TrackViewId
-    ) -> Result<BoxStream<TrackViewEvent>>;
-
-    GetTrackName => get_track_name(
-        id: TrackId,
-    ) -> Result<String>;
-
-    SetTrackName => set_track_name(
-        id: TrackId,
-        new_name: String,
-    ) -> Result<()>;
-
-    GetTrackChildren => get_track_children(
-        parent: TrackId
-    ) -> Result<Vec<TrackId>>;
-
-    GetTrackHierarchy => get_track_hierarchy(
-        root: TrackId
-    ) -> Result<TrackHierarchy>;
-
-    AppendTrackChild => append_track_child(
-        parent: TrackId,
-        child: TrackId,
-    ) -> Result<()>;
-
-    InsertTrackChild => insert_track_child(
-        parent: TrackId,
-        child: TrackId,
-        index: usize,
-    ) -> Result<()>;
-
-    MoveTrack => move_track(
-        old_parent: TrackId,
-        old_index: usize,
-        new_parent: TrackId,
-        new_index: usize,
-    ) -> Result<()>;
-
-    RemoveTrackChild => remove_track_child(
-        parent: TrackId,
-        index: usize
-    ) -> Result<()>;
-
-    AddTrackItem => add_track_item(
-        track_id: TrackId,
-        item: TrackItem,
-    ) -> Result<TrackItemId>;
-
-    GetTrackItem => get_track_item(
-        track_id: TrackId,
-        item_id: TrackItemId,
-    ) -> Result<TrackItem>;
-
-    RemoveTrackItem => remove_track_item(
-        track_id: TrackId,
-        item_id: TrackItemId,
-    ) -> Result<()>;
-
-    MoveTrackItem => move_track_item(
-        track_id: TrackId,
-        item_id: TrackItemId,
-        new_start: Time,
-    ) -> Result<()>;
-
-    ResizeTrackItem => resize_track_item(
-        track_id: TrackId,
-        item_id: TrackItemId,
-        new_duration: Time,
-    ) -> Result<()>;
-
-    GetTrackViewItem => get_track_view_item(
-        view_id: TrackViewId,
-        item_id: TrackItemId,
-    ) -> Result<TrackViewItem>;
-
-    GetTrackViewRange => get_track_view_range(
-        view_id: TrackViewId,
-        start: Option<Time>,
-        end: Option<Time>,
-    ) -> Result<Vec<(TrackItemId, TrackViewItem)>>;
-}
-
+#[rdaw_rpc::handler(protocol = BackendProtocol, operations = TrackOperations)]
 impl Backend {
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn list_tracks(&self) -> Result<Vec<TrackId>> {
         let tracks = self.hub.tracks.iter().map(|(id, _)| id).collect();
         Ok(tracks)
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn create_track(&mut self) -> Result<TrackId> {
         let track = Track::new(String::new());
         let id = self.hub.tracks.insert(track);
@@ -137,49 +37,48 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub fn subscribe_track(&mut self, id: TrackId) -> Result<BoxStream<TrackEvent>> {
+    #[handler]
+    pub fn subscribe_track(&mut self, id: TrackId) -> Result<StreamId> {
         if !self.hub.tracks.contains_id(id) {
             return Err(Error::InvalidId);
         }
 
-        Ok(Box::pin(self.subscribers.track.subscribe(id)))
+        Ok(self.subscribers.track.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
-    pub fn subscribe_track_hierarchy(
-        &mut self,
-        id: TrackId,
-    ) -> Result<BoxStream<TrackHierarchyEvent>> {
+    #[handler]
+    pub fn subscribe_track_hierarchy(&mut self, id: TrackId) -> Result<StreamId> {
         if !self.hub.tracks.contains_id(id) {
             return Err(Error::InvalidId);
         }
 
-        Ok(Box::pin(self.subscribers.track_hierarchy.subscribe(id)))
+        Ok(self.subscribers.track_hierarchy.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
-    pub fn subscribe_track_view(
-        &mut self,
-        view_id: TrackViewId,
-    ) -> Result<BoxStream<TrackViewEvent>> {
-        if !self.hub.arrangements.contains_id(view_id.arrangement_id) {
+    #[handler]
+    pub fn subscribe_track_view(&mut self, id: TrackViewId) -> Result<StreamId> {
+        if !self.hub.arrangements.contains_id(id.arrangement_id) {
             return Err(Error::InvalidId);
         }
 
-        if !self.hub.tracks.contains_id(view_id.track_id) {
+        if !self.hub.tracks.contains_id(id.track_id) {
             return Err(Error::InvalidId);
         }
 
-        Ok(Box::pin(self.subscribers.track_view.subscribe(view_id)))
+        Ok(self.subscribers.track_view.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn get_track_name(&self, id: TrackId) -> Result<String> {
         let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         Ok(track.name.clone())
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
         let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
         track.name.clone_from(&new_name);
@@ -191,17 +90,19 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_track_children(&self, parent: TrackId) -> Result<Vec<TrackId>> {
-        let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
+    #[handler]
+    pub fn get_track_children(&self, id: TrackId) -> Result<Vec<TrackId>> {
+        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
         Ok(track.links.children.clone())
     }
 
     #[instrument(skip_all, err)]
-    pub fn get_track_hierarchy(&self, root: TrackId) -> Result<TrackHierarchy> {
-        let mut hierarchy = TrackHierarchy::new(root);
+    #[handler]
+    pub fn get_track_hierarchy(&self, id: TrackId) -> Result<TrackHierarchy> {
+        let mut hierarchy = TrackHierarchy::new(id);
 
         let mut stack = Vec::new();
-        stack.push(root);
+        stack.push(id);
 
         while let Some(id) = stack.pop() {
             let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
@@ -268,13 +169,15 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
-    pub fn append_track_child(&mut self, parent: TrackId, child: TrackId) -> Result<()> {
-        let track = self.hub.tracks.get(parent).ok_or(Error::InvalidId)?;
+    #[handler]
+    pub fn append_track_child(&mut self, parent_id: TrackId, child_id: TrackId) -> Result<()> {
+        let track = self.hub.tracks.get(parent_id).ok_or(Error::InvalidId)?;
         let index = track.links.children.len();
-        self.insert_track_child(parent, child, index)
+        self.insert_track_child(parent_id, child_id, index)
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn insert_track_child(
         &mut self,
         parent_id: TrackId,
@@ -307,17 +210,18 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn move_track(
         &mut self,
-        old_parent: TrackId,
+        old_parent_id: TrackId,
         old_index: usize,
-        new_parent: TrackId,
+        new_parent_id: TrackId,
         new_index: usize,
     ) -> Result<()> {
-        if old_parent == new_parent {
-            self.move_track_in_parent(old_parent, old_index, new_index)
+        if old_parent_id == new_parent_id {
+            self.move_track_in_parent(old_parent_id, old_index, new_index)
         } else {
-            self.move_track_between_parents(old_parent, old_index, new_parent, new_index)
+            self.move_track_between_parents(old_parent_id, old_index, new_parent_id, new_index)
         }
     }
 
@@ -389,6 +293,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
         let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
 
@@ -408,6 +313,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn add_track_item(&mut self, track_id: TrackId, item: TrackItem) -> Result<TrackItemId> {
         let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
         let item_id = track.items.insert(item);
@@ -427,12 +333,14 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn get_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
         let track = self.hub.tracks.get(track_id).ok_or(Error::InvalidId)?;
         track.items.get(item_id).copied().ok_or(Error::InvalidId)
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn remove_track_item(&mut self, track_id: TrackId, item_id: TrackItemId) -> Result<()> {
         let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
         track.items.remove(item_id);
@@ -447,6 +355,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn move_track_item(
         &mut self,
         track_id: TrackId,
@@ -474,6 +383,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn resize_track_item(
         &mut self,
         track_id: TrackId,
@@ -501,6 +411,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn get_track_view_item(
         &mut self,
         view_id: TrackViewId,
@@ -517,6 +428,7 @@ impl Backend {
     }
 
     #[instrument(skip_all, err)]
+    #[handler]
     pub fn get_track_view_range(
         &mut self,
         view_id: TrackViewId,

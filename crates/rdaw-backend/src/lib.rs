@@ -1,24 +1,27 @@
 pub mod arrangement;
 pub mod blob;
-pub mod dispatch;
 pub mod document;
+pub mod hub;
 pub mod item;
 pub mod source;
 pub mod storage;
 pub mod subscribers;
 pub mod tempo_map;
+#[cfg(test)]
+pub mod tests;
 pub mod track;
 
-use arrangement::ArrangementOperation;
-use async_channel::{Receiver, Sender};
+use std::sync::Arc;
+
+use rdaw_api::{BackendProtocol, BackendRequest, Error, Result};
 use rdaw_core::Uuid;
+use rdaw_rpc::transport::{LocalServerTransport, ServerTransport};
+use rdaw_rpc::{ClientMessage, StreamIdAllocator};
 use slotmap::Key;
 
-use self::blob::{BlobCache, BlobOperation};
-use self::source::AudioSourceOperation;
-use self::storage::Hub;
-use self::subscribers::SubscribersHub;
-use self::track::{TrackOperation, TrackViewCache};
+use self::blob::BlobCache;
+use self::hub::{Hub, SubHub};
+use self::track::TrackViewCache;
 
 pub trait Object {
     type Id: Key;
@@ -33,98 +36,66 @@ pub trait Object {
 
 #[derive(Debug)]
 pub struct Backend {
-    sender: Sender<Operation>,
-    receiver: Receiver<Operation>,
+    transport: LocalServerTransport<BackendProtocol>,
+
     hub: Hub,
-    subscribers: SubscribersHub,
+    subscribers: SubHub,
+
     blob_cache: BlobCache,
     track_view_cache: TrackViewCache,
 }
 
 impl Backend {
-    pub fn new() -> Backend {
-        let (sender, receiver) = async_channel::unbounded();
+    pub fn new(transport: LocalServerTransport<BackendProtocol>) -> Backend {
+        let stream_id_allocator = Arc::new(StreamIdAllocator::new());
+
         Backend {
-            sender,
-            receiver,
+            transport,
+
             hub: Hub::default(),
-            subscribers: SubscribersHub::default(),
+            subscribers: SubHub::new(stream_id_allocator.clone()),
+
             blob_cache: BlobCache::default(),
             track_view_cache: TrackViewCache::default(),
         }
     }
 
-    pub fn handle(&self) -> BackendHandle {
-        BackendHandle {
-            sender: self.sender.clone(),
-        }
+    pub async fn update(&mut self) -> Result<()> {
+        self.subscribers.deliver(&self.transport).await?;
+        Ok(())
     }
 
-    pub fn dispatch(&mut self, operation: Operation) {
-        match operation {
-            Operation::Arrangement(op) => self.dispatch_arrangement_operation(op),
-            Operation::AudioSource(op) => self.dispatch_audio_source_operation(op),
-            Operation::Blob(op) => self.dispatch_blob_operation(op),
-            Operation::Track(op) => self.dispatch_track_operation(op),
-        }
-    }
-
-    pub async fn update(&mut self) {
-        self.subscribers.update().await;
-    }
-
-    pub async fn run(mut self) {
+    pub async fn handle(&mut self) -> Result<()> {
         loop {
-            let Ok(op) = self.receiver.recv().await else {
-                break;
+            let msg = match self.transport.recv().await {
+                Ok(v) => v,
+                Err(Error::Disconnected) => return Ok(()),
+                Err(e) => return Err(e),
             };
 
-            self.dispatch(op);
-            self.update().await;
+            match msg {
+                ClientMessage::Request { id, payload } => match payload {
+                    BackendRequest::Arrangement(req) => {
+                        self.handle_arrangement_request(self.transport.clone(), id, req)
+                            .await?
+                    }
+                    BackendRequest::AudioSource(req) => {
+                        self.handle_audio_source_request(self.transport.clone(), id, req)
+                            .await?
+                    }
+                    BackendRequest::Blob(req) => {
+                        self.handle_blob_request(self.transport.clone(), id, req)
+                            .await?
+                    }
+                    BackendRequest::Track(req) => {
+                        self.handle_track_request(self.transport.clone(), id, req)
+                            .await?
+                    }
+                },
+                ClientMessage::CloseStream { id } => self.subscribers.close_one(id),
+            }
+
+            self.update().await?;
         }
-    }
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Backend::new()
-    }
-}
-
-#[derive(Debug)]
-pub struct BackendHandle {
-    sender: Sender<Operation>,
-}
-
-impl rdaw_api::Backend for BackendHandle {}
-
-pub enum Operation {
-    Arrangement(ArrangementOperation),
-    AudioSource(AudioSourceOperation),
-    Blob(BlobOperation),
-    Track(TrackOperation),
-}
-
-impl From<ArrangementOperation> for Operation {
-    fn from(op: ArrangementOperation) -> Operation {
-        Operation::Arrangement(op)
-    }
-}
-
-impl From<AudioSourceOperation> for Operation {
-    fn from(op: AudioSourceOperation) -> Operation {
-        Operation::AudioSource(op)
-    }
-}
-
-impl From<BlobOperation> for Operation {
-    fn from(op: BlobOperation) -> Operation {
-        Operation::Blob(op)
-    }
-}
-
-impl From<TrackOperation> for Operation {
-    fn from(op: TrackOperation) -> Operation {
-        Operation::Track(op)
     }
 }

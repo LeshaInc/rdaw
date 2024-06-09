@@ -8,7 +8,6 @@ use rdaw_api::blob::BlobId;
 use rdaw_core::Uuid;
 
 pub use self::cache::BlobCache;
-pub use self::ops::BlobOperation;
 use crate::Object;
 
 #[derive(Debug, Clone)]

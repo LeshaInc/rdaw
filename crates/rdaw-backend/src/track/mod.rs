@@ -8,7 +8,6 @@ use rdaw_api::track::{TrackId, TrackItem, TrackItemId};
 use rdaw_core::collections::HashSet;
 use slotmap::SlotMap;
 
-pub use self::ops::TrackOperation;
 pub use self::view::{TrackView, TrackViewCache};
 use crate::{Hub, Object, Uuid};
 

@@ -10,7 +10,7 @@ slotmap::new_key_type! {
 pub trait AudioSourceOperations {
     async fn list_audio_sources(&self) -> Result<Vec<AudioSourceId>>;
 
-    async fn create_audio_source(&self, blob: BlobId) -> Result<AudioSourceId>;
+    async fn create_audio_source(&self, blob_id: BlobId) -> Result<AudioSourceId>;
 
     #[sub]
     async fn subscribe_audio_source(
