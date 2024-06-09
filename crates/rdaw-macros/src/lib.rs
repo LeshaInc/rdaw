@@ -388,7 +388,7 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
     let handler = quote! {
         async fn handle_foo_request<T: rdaw_rpc::transport::ServerTransport<#protocol_path>>(
             &mut self,
-            transport: Arc<T>,
+            transport: T,
             id: rdaw_rpc::RequestId,
             req: #req_ident,
         ) -> Result<(), #error_path> {

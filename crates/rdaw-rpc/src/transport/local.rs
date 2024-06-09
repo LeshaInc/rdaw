@@ -25,7 +25,7 @@ pub fn local<P: Protocol>(
     )
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct LocalClientTransport<P: Protocol> {
     sender: Sender<ClientMessage<P>>,
     receiver: Receiver<ServerMessage<P>>,
@@ -47,7 +47,16 @@ impl<P: Protocol> ClientTransport<P> for LocalClientTransport<P> {
     }
 }
 
-#[derive(Debug, Clone)]
+impl<P: Protocol> Clone for LocalClientTransport<P> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            receiver: self.receiver.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct LocalServerTransport<P: Protocol> {
     sender: Sender<ServerMessage<P>>,
     receiver: Receiver<ClientMessage<P>>,
@@ -66,5 +75,14 @@ impl<P: Protocol> ServerTransport<P> for LocalServerTransport<P> {
             .recv()
             .await
             .map_err(|_| P::Error::disconnected())
+    }
+}
+
+impl<P: Protocol> Clone for LocalServerTransport<P> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            receiver: self.receiver.clone(),
+        }
     }
 }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use futures_lite::future::block_on;
 use futures_lite::FutureExt;
 use rdaw_rpc::transport::{self, ServerTransport};
@@ -28,7 +26,7 @@ impl TestBackend {
 impl TestBackend {
     async fn handle_message<T: ServerTransport<TestProtocol>>(
         &mut self,
-        transport: Arc<T>,
+        transport: T,
         msg: ClientMessage<TestProtocol>,
     ) -> Result<()> {
         match msg {
@@ -39,7 +37,7 @@ impl TestBackend {
         }
     }
 
-    async fn handle<T: ServerTransport<TestProtocol>>(&mut self, transport: Arc<T>) -> Result<()> {
+    async fn handle<T: ServerTransport<TestProtocol>>(&mut self, transport: T) -> Result<()> {
         loop {
             match transport.recv().await {
                 Ok(msg) => self.handle_message(transport.clone(), msg).await?,
@@ -57,10 +55,7 @@ fn local_client() -> Result<()> {
     let client = Client::<TestProtocol, _>::new(client_transport);
     let mut server = TestBackend;
 
-    let handle = client
-        .clone()
-        .handle()
-        .or(server.handle(Arc::new(server_transport)));
+    let handle = client.clone().handle().or(server.handle(server_transport));
 
     let test = async move {
         let foo = client.get_foo().await?;
