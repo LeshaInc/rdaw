@@ -13,6 +13,7 @@ rdaw-core = { path = "crates/rdaw-core", version = "0.1.0" }
 rdaw-frontend = { path = "crates/rdaw-frontend", version = "0.1.0" }
 rdaw-macros = { path = "crates/rdaw-macros", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
+rdaw-rpc = { path = "crates/rdaw-rpc", version = "0.1.0" }
 rdaw-ui-kit = { path = "crates/rdaw-ui-kit", version = "0.1.0" }
 
 ahash = "0.8.11"
@@ -25,6 +26,7 @@ chrono = { version = "0.4.38", features = ["now"] }
 convert_case = "0.6.0"
 crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
+darling = "0.20.9"
 dashmap = "5.5.3"
 fixed = "1.27.0"
 floem = { git = "https://github.com/lapce/floem.git", rev = "c74beb142dd2611ff5a2f648e3bdb4b9437c9dc7" }

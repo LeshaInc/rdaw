@@ -11,20 +11,18 @@ use pin_project_lite::pin_project;
 use rdaw_core::collections::{dashmap, DashMap};
 
 use crate::transport::ClientTransport;
-use crate::{ClientMessage, Error, EventStreamId, Protocol, RequestId, Result, ServerMessage};
+use crate::{ClientMessage, Protocol, ProtocolError, RequestId, ServerMessage, StreamId};
 
-#[derive(Debug)]
 pub struct Client<P: Protocol, T: ClientTransport<P>> {
     inner: Arc<Inner<P, T>>,
 }
 
-#[derive(Debug)]
 struct Inner<P: Protocol, T: ClientTransport<P>> {
     transport: T,
     req_counter: AtomicU64,
     requests: DashMap<RequestId, RequestSlot<P>>,
-    streams: DashMap<EventStreamId, Sender<P::Event>>,
-    closed_streams: Arc<SegQueue<EventStreamId>>,
+    streams: DashMap<StreamId, Sender<P::Event>>,
+    closed_streams: Arc<SegQueue<StreamId>>,
 }
 
 impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
@@ -40,11 +38,11 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         }
     }
 
-    pub async fn handle(self) -> Result<()> {
+    pub async fn handle(self) -> Result<(), P::Error> {
         loop {
             let msg = match self.inner.transport.recv().await {
                 Ok(v) => v,
-                Err(Error::Disconnected) => return Ok(()),
+                Err(e) if e.is_disconnected() => return Ok(()),
                 Err(e) => return Err(e),
             };
 
@@ -59,7 +57,7 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         }
     }
 
-    pub async fn request(&self, req: P::Req) -> Result<P::Res> {
+    pub async fn request(&self, req: P::Req) -> Result<P::Res, P::Error> {
         let id = RequestId(self.inner.req_counter.fetch_add(1, Ordering::Relaxed));
 
         let msg = ClientMessage::Request {
@@ -71,12 +69,12 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         self.wait_for_response(id).await
     }
 
-    pub fn subscribe(&self, id: EventStreamId) -> impl Stream<Item = P::Event> {
+    pub fn subscribe(&self, id: StreamId) -> impl Stream<Item = P::Event> {
         let (sender, receiver) = async_channel::unbounded();
         self.inner.streams.insert(id, sender);
 
         EventStream {
-            cleaner: EventStreamCleaner {
+            cleaner: StreamCleaner {
                 id,
                 queue: self.inner.closed_streams.clone(),
             },
@@ -84,7 +82,10 @@ impl<P: Protocol, T: ClientTransport<P>> Client<P, T> {
         }
     }
 
-    fn wait_for_response(&self, id: RequestId) -> impl Future<Output = Result<P::Res>> + '_ {
+    fn wait_for_response(
+        &self,
+        id: RequestId,
+    ) -> impl Future<Output = Result<P::Res, P::Error>> + '_ {
         std::future::poll_fn(move |ctx| {
             let mut slot = self
                 .inner
@@ -152,15 +153,14 @@ impl<P: Protocol, T: ClientTransport<P>> Clone for Client<P, T> {
     }
 }
 
-#[derive(Debug)]
 struct RequestSlot<P: Protocol> {
-    response: Option<Result<P::Res>>,
+    response: Option<Result<P::Res, P::Error>>,
     waker: Option<Waker>,
 }
 
 pin_project! {
     struct EventStream<T> {
-        cleaner: EventStreamCleaner,
+        cleaner: StreamCleaner,
         #[pin]
         receiver: Receiver<T>,
     }
@@ -174,12 +174,12 @@ impl<T> Stream for EventStream<T> {
     }
 }
 
-struct EventStreamCleaner {
-    id: EventStreamId,
-    queue: Arc<SegQueue<EventStreamId>>,
+struct StreamCleaner {
+    id: StreamId,
+    queue: Arc<SegQueue<StreamId>>,
 }
 
-impl Drop for EventStreamCleaner {
+impl Drop for StreamCleaner {
     fn drop(&mut self) {
         self.queue.push(self.id);
     }

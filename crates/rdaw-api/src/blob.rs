@@ -6,7 +6,7 @@ slotmap::new_key_type! {
     pub struct BlobId;
 }
 
-#[rdaw_macros::api_operations(BackendProtocol)]
+#[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait BlobOperations {
     async fn create_internal_blob(&self, data: Vec<u8>) -> Result<BlobId>;
 

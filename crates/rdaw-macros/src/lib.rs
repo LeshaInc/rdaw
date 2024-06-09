@@ -1,15 +1,21 @@
 use convert_case::{Case, Casing};
+use darling::ast::NestedMeta;
+use darling::util::PathList;
+use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro_error::{emit_error, proc_macro_error};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::*;
+
+#[derive(Debug, FromMeta)]
+struct ApiOperationsArgs {
+    protocol: syn::Path,
+}
 
 #[proc_macro_attribute]
 #[proc_macro_error]
-pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
-    let ItemTrait {
+pub fn rpc_operations(args: TokenStream, item: TokenStream) -> TokenStream {
+    let syn::ItemTrait {
         attrs,
         vis,
         unsafety,
@@ -18,14 +24,22 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         mut supertraits,
         items,
         ..
-    } = parse_macro_input!(item as ItemTrait);
+    } = syn::parse_macro_input!(item as syn::ItemTrait);
 
-    let protocol_path = parse_macro_input!(args as Path);
+    let args = match parse_macro_args::<ApiOperationsArgs>(args) {
+        Ok(v) => v,
+        Err(e) => return e.write_errors().into(),
+    };
+
+    let protocol_path = args.protocol;
+
+    let error_path = quote!(<#protocol_path as rdaw_rpc::Protocol>::Error);
+    let error_path_as = quote!(<#error_path as rdaw_rpc::ProtocolError>);
 
     let mut funcs = items
         .iter()
         .flat_map(|item| match item {
-            TraitItem::Fn(v) => Some(v.clone()),
+            syn::TraitItem::Fn(v) => Some(v.clone()),
             _ => {
                 emit_error!(item, "items other than `fn` are not supported");
                 None
@@ -33,7 +47,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect::<Vec<_>>();
 
-    let ident_without_ops = Ident::new(
+    let ident_without_ops = syn::Ident::new(
         ident.to_string().trim_end_matches("Operations"),
         ident.span(),
     );
@@ -56,7 +70,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
             !is_sub
         });
 
-        let ReturnType::Type(_, func_ret_ty_res) = &func.sig.output else {
+        let syn::ReturnType::Type(_, func_ret_ty_res) = &func.sig.output else {
             emit_error!(func.sig.output, "method must return `Result<T>`");
             continue;
         };
@@ -67,13 +81,13 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         };
 
         let variant_span = func.sig.ident.span();
-        let variant_ident = Ident::new(
+        let variant_ident = syn::Ident::new(
             &func.sig.ident.to_string().to_case(Case::Pascal),
             variant_span,
         );
 
         let params = func.sig.inputs.iter().flat_map(|arg| match arg {
-            FnArg::Typed(arg) => Some(arg),
+            syn::FnArg::Typed(arg) => Some(arg),
             _ => None,
         });
 
@@ -81,7 +95,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         let mut param_names = Vec::new();
 
         for param in params {
-            let Pat::Ident(pat) = &*param.pat else {
+            let syn::Pat::Ident(pat) = &*param.pat else {
                 emit_error!(param.pat, "complex patterns in arguments are not supported");
                 continue;
             };
@@ -100,8 +114,8 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         };
 
         let (res_variant, event_variant) = if is_sub {
-            let replacement = Type::Verbatim(quote_spanned! { func_ret_ty_res.span() =>
-                crate::EventStreamId
+            let replacement = syn::Type::Verbatim(quote_spanned! { func_ret_ty_res.span() =>
+                rdaw_rpc::StreamId
             });
 
             let Some((orig_ok_ty, result_ty)) =
@@ -146,22 +160,28 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
             impl ::core::future::Future<Output = #func_ret_ty_res> + Send
         };
 
-        func.sig.output = ReturnType::Type(
-            Token![->](new_output_ty.span()),
-            Box::new(Type::Verbatim(new_output_ty)),
+        func.sig.output = syn::ReturnType::Type(
+            syn::Token![->](new_output_ty.span()),
+            Box::new(syn::Type::Verbatim(new_output_ty)),
         );
 
         let func_body = if is_sub {
             quote! {
                 use futures_lite::StreamExt;
+
                 let res = self.request(
                     #req_enum_ident::#variant_ident { #(#param_names,)* }.into()
                 ).await?;
-                let res: #res_enum_ident  = res.try_into().map_err(|_| crate::Error::InvalidType)?;
+
+                let res: #res_enum_ident = res
+                    .try_into()
+                    .map_err(|_| #error_path_as::invalid_type())?;
+
                 let id = match res {
                     #res_enum_ident::#variant_ident(v) => v?,
-                    _ => return Err(crate::Error::InvalidType),
+                    _ => return Err(#error_path_as::invalid_type()),
                 };
+
                 let stream = self.subscribe(id)
                     .map(|v| {
                         let ev: #event_enum_ident = v.try_into().ok().unwrap();
@@ -178,10 +198,14 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
                 let res = self.request(
                     #req_enum_ident::#variant_ident { #(#param_names,)* }.into()
                 ).await?;
-                let res: #res_enum_ident  = res.try_into().map_err(|_| crate::Error::InvalidType)?;
+
+                let res: #res_enum_ident = res
+                    .try_into()
+                    .map_err(|_| #error_path_as::invalid_type())?;
+
                 match res {
                     #res_enum_ident::#variant_ident(v) => Ok(v),
-                    _ => Err(crate::Error::InvalidType),
+                    _ => Err(#error_path_as::invalid_type()),
                 }
             }
         };
@@ -196,7 +220,7 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         func_impls.push(func_impl);
     }
 
-    supertraits.push(TypeParamBound::Verbatim(quote! { Send }));
+    supertraits.push(syn::TypeParamBound::Verbatim(quote! { Send }));
 
     let expanded = quote! {
         #(#attrs)*
@@ -220,9 +244,9 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[automatically_derived]
-        impl<T> #ident for crate::Client<#protocol_path, T>
+        impl<T> #ident for rdaw_rpc::Client<#protocol_path, T>
         where
-            T: crate::transport::ClientTransport<#protocol_path>
+            T: rdaw_rpc::transport::ClientTransport<#protocol_path>
         {
             #(#func_impls)*
         }
@@ -231,22 +255,31 @@ pub fn api_operations(args: TokenStream, item: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+#[derive(Debug, FromMeta)]
+struct ApiProtocolArgs {
+    operations: PathList,
+    error: syn::Path,
+}
+
 #[proc_macro_attribute]
 #[proc_macro_error]
-pub fn api_protocol(args: TokenStream, item: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(item as ItemStruct);
+pub fn rpc_protocol(args: TokenStream, item: TokenStream) -> TokenStream {
+    let item = syn::parse_macro_input!(item as syn::ItemStruct);
     let vis = item.vis.clone();
 
-    let ops_traits = parse_macro_input!(args as PathList)
-        .paths
-        .into_iter()
-        .collect::<Vec<_>>();
+    let args = match parse_macro_args::<ApiProtocolArgs>(args) {
+        Ok(v) => v,
+        Err(e) => return e.write_errors().into(),
+    };
+
+    let ops_traits = args.operations;
+    let error_path = args.error;
 
     let ops_names = ops_traits
         .iter()
         .map(|v| {
             let ident = &v.segments.last().unwrap().ident;
-            Ident::new(
+            syn::Ident::new(
                 ident.to_string().trim_end_matches("Operations"),
                 ident.span(),
             )
@@ -254,7 +287,8 @@ pub fn api_protocol(args: TokenStream, item: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
 
     let ident = &item.ident;
-    let ident_prefix = Ident::new(ident.to_string().trim_end_matches("Protocol"), ident.span());
+    let ident_prefix =
+        syn::Ident::new(ident.to_string().trim_end_matches("Protocol"), ident.span());
 
     let (req_enum_ident, req_enum) =
         generate_sum_enum(&vis, &ident_prefix, &ops_traits, &ops_names, "Request");
@@ -270,39 +304,54 @@ pub fn api_protocol(args: TokenStream, item: TokenStream) -> TokenStream {
         #event_enum
 
         #[automatically_derived]
-        impl crate::Protocol for #ident {
+        impl rdaw_rpc::Protocol for #ident {
             type Req = #req_enum_ident;
             type Res = #res_enum_ident;
             type Event = #event_enum_ident;
+            type Error = #error_path;
         }
     };
 
     TokenStream::from(expanded)
 }
 
+#[derive(Debug, FromMeta)]
+struct ApiHandlerArgs {
+    protocol: syn::Path,
+    operations: syn::Path,
+}
+
 #[proc_macro_attribute]
 #[proc_macro_error]
-pub fn api_handler(args: TokenStream, item: TokenStream) -> TokenStream {
-    let mut item = parse_macro_input!(item as ItemImpl);
+pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
+    let mut item = syn::parse_macro_input!(item as syn::ItemImpl);
 
-    let paths = parse_macro_input!(args as PathList);
-    let protocol_path = &paths.paths[0];
-    let ops_path = &paths.paths[1];
+    let args = match parse_macro_args::<ApiHandlerArgs>(args) {
+        Ok(v) => v,
+        Err(e) => return e.write_errors().into(),
+    };
+
+    let protocol_path = args.protocol;
+    let ops_path = args.operations;
+
+    let error_path = quote!(<#protocol_path as rdaw_rpc::Protocol>::Error);
 
     let ident = &ops_path.segments.last().unwrap().ident;
     let ident_str = ident.to_string();
     let base = ident_str.trim_end_matches("Operations");
 
-    let req_ident = Ident::new(&format!("{base}Request"), ident.span());
-    let res_ident = Ident::new(&format!("{base}Response"), ident.span());
+    let req_ident = syn::Ident::new(&format!("{base}Request"), ident.span());
+    let res_ident = syn::Ident::new(&format!("{base}Response"), ident.span());
 
     let mut match_cases = Vec::new();
 
     for item in &item.items {
-        let ImplItem::Fn(func) = item else { continue };
+        let syn::ImplItem::Fn(func) = item else {
+            continue;
+        };
 
         let func_name = &func.sig.ident;
-        let name = Ident::new(
+        let name = syn::Ident::new(
             &func.sig.ident.to_string().to_case(Case::Pascal),
             func.sig.ident.span(),
         );
@@ -312,9 +361,9 @@ pub fn api_handler(args: TokenStream, item: TokenStream) -> TokenStream {
             .inputs
             .iter()
             .flat_map(|v| match v {
-                FnArg::Receiver(_) => None,
-                FnArg::Typed(PatType { pat, .. }) => match **pat {
-                    Pat::Ident(ref ident) => Some(ident.ident.clone()),
+                syn::FnArg::Receiver(_) => None,
+                syn::FnArg::Typed(syn::PatType { pat, .. }) => match **pat {
+                    syn::Pat::Ident(ref ident) => Some(ident.ident.clone()),
                     _ => {
                         emit_error!(pat, "complex patterns in arguments are not supported");
                         None
@@ -330,48 +379,42 @@ pub fn api_handler(args: TokenStream, item: TokenStream) -> TokenStream {
                     .map(#res_ident::#name)
                     .map(|v| v.into());
                 transport
-                    .send(crate::ServerMessage::Response { id, payload })
+                    .send(rdaw_rpc::ServerMessage::Response { id, payload })
                     .await
             }
         });
     }
 
     let handler = quote! {
-        async fn handle_foo_request<T: crate::transport::ServerTransport<#protocol_path>>(
+        async fn handle_foo_request<T: rdaw_rpc::transport::ServerTransport<#protocol_path>>(
             &mut self,
             transport: Arc<T>,
-            id: crate::RequestId,
+            id: rdaw_rpc::RequestId,
             req: #req_ident,
-        ) -> crate::Result<()> {
+        ) -> Result<(), #error_path> {
             match req {
                 #(#match_cases)*
             }
         }
     };
 
-    item.items.push(ImplItem::Verbatim(handler));
+    item.items.push(syn::ImplItem::Verbatim(handler));
 
     item.to_token_stream().into()
 }
 
-struct PathList {
-    paths: Punctuated<Path, Token![,]>,
-}
-
-impl syn::parse::Parse for PathList {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let paths = Punctuated::parse_terminated(input)?;
-        Ok(PathList { paths })
-    }
+fn parse_macro_args<T: FromMeta>(args: TokenStream) -> Result<T, darling::Error> {
+    let attr_args = NestedMeta::parse_meta_list(args.into())?;
+    Ok(T::from_list(&attr_args)?)
 }
 
 fn generate_sum_enum(
-    vis: &Visibility,
-    prefix: &Ident,
-    paths: &[Path],
-    idents: &[Ident],
+    vis: &syn::Visibility,
+    prefix: &syn::Ident,
+    paths: &[syn::Path],
+    idents: &[syn::Ident],
     suffix: &str,
-) -> (Ident, proc_macro2::TokenStream) {
+) -> (syn::Ident, proc_macro2::TokenStream) {
     let enum_ident = format_ident!("{prefix}{suffix}");
 
     let mut enum_variants = Vec::new();
@@ -417,8 +460,8 @@ fn generate_sum_enum(
     (enum_ident, tt)
 }
 
-fn replace_result_ok_type(ty: &Type, new_ok: Type) -> Option<(Type, Type)> {
-    let Type::Path(mut ret_ty) = ty.clone() else {
+fn replace_result_ok_type(ty: &syn::Type, new_ok: syn::Type) -> Option<(syn::Type, syn::Type)> {
+    let syn::Type::Path(mut ret_ty) = ty.clone() else {
         return None;
     };
 
@@ -428,11 +471,11 @@ fn replace_result_ok_type(ty: &Type, new_ok: Type) -> Option<(Type, Type)> {
         return None;
     }
 
-    let PathArguments::AngleBracketed(args) = &mut last_seg.arguments else {
+    let syn::PathArguments::AngleBracketed(args) = &mut last_seg.arguments else {
         return None;
     };
 
-    let GenericArgument::Type(orig_ty) = args.args.iter_mut().next()? else {
+    let syn::GenericArgument::Type(orig_ty) = args.args.iter_mut().next()? else {
         return None;
     };
 
@@ -441,8 +484,8 @@ fn replace_result_ok_type(ty: &Type, new_ok: Type) -> Option<(Type, Type)> {
     Some((orig_ty, ret_ty.into()))
 }
 
-fn unwrap_type<'a>(ty: &'a Type, expect: &str) -> Option<&'a Type> {
-    let Type::Path(ret_ty) = ty else {
+fn unwrap_type<'a>(ty: &'a syn::Type, expect: &str) -> Option<&'a syn::Type> {
+    let syn::Type::Path(ret_ty) = ty else {
         return None;
     };
 
@@ -452,11 +495,11 @@ fn unwrap_type<'a>(ty: &'a Type, expect: &str) -> Option<&'a Type> {
         return None;
     }
 
-    let PathArguments::AngleBracketed(args) = &last_seg.arguments else {
+    let syn::PathArguments::AngleBracketed(args) = &last_seg.arguments else {
         return None;
     };
 
-    let GenericArgument::Type(orig_ty) = args.args.iter().next().unwrap() else {
+    let syn::GenericArgument::Type(orig_ty) = args.args.iter().next().unwrap() else {
         return None;
     };
 

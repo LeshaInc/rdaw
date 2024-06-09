@@ -1,0 +1,15 @@
+[package]
+name = "rdaw-rpc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdaw-core.workspace = true
+rdaw-macros.workspace = true
+
+async-channel.workspace = true
+crossbeam-queue.workspace = true
+futures-lite.workspace = true
+pin-project-lite.workspace = true
+thiserror.workspace = true
+trait-variant.workspace = true

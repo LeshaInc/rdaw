@@ -6,7 +6,7 @@ slotmap::new_key_type! {
     pub struct ArrangementId;
 }
 
-#[rdaw_macros::api_operations(BackendProtocol)]
+#[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait ArrangementOperations {
     async fn list_arrangements(&self) -> Result<Vec<ArrangementId>>;
 

@@ -18,7 +18,7 @@ pub struct TrackViewId {
     pub arrangement_id: ArrangementId,
 }
 
-#[rdaw_macros::api_operations(BackendProtocol)]
+#[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait TrackOperations {
     async fn list_tracks(&self) -> Result<Vec<TrackId>>;
 

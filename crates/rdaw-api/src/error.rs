@@ -1,6 +1,8 @@
 use std::fmt::Display;
 use std::path::Path;
 
+use rdaw_rpc::ProtocolError;
+
 #[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]
 pub enum Error {
     #[error("internal error: {message}")]
@@ -44,6 +46,24 @@ impl Error {
             path: path.as_ref().to_string_lossy().into_owned(),
             message: error.to_string(),
         }
+    }
+}
+
+impl ProtocolError for Error {
+    fn disconnected() -> Self {
+        Error::Disconnected
+    }
+
+    fn invalid_type() -> Self {
+        Error::InvalidType
+    }
+
+    fn is_disconnected(&self) -> bool {
+        matches!(self, Error::Disconnected)
+    }
+
+    fn is_invalid_type(&self) -> bool {
+        matches!(self, Error::InvalidType)
     }
 }
 

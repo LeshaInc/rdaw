@@ -6,7 +6,7 @@ slotmap::new_key_type! {
     pub struct AudioSourceId;
 }
 
-#[rdaw_macros::api_operations(BackendProtocol)]
+#[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait AudioSourceOperations {
     async fn list_audio_sources(&self) -> Result<Vec<AudioSourceId>>;
 

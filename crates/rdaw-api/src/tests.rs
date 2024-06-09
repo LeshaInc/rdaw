@@ -2,22 +2,23 @@ use std::sync::Arc;
 
 use futures_lite::future::block_on;
 use futures_lite::FutureExt;
+use rdaw_rpc::transport::{self, ServerTransport};
+use rdaw_rpc::{handler, operations, protocol, Client, ClientMessage};
 
-use crate::transport::{self, ServerTransport};
-use crate::{Client, ClientMessage, Error, Result};
+use crate::{Error, Result};
 
-#[rdaw_macros::api_operations(TestProtocol)]
+#[operations(protocol = TestProtocol)]
 trait FooOperations {
     async fn get_foo(&self) -> Result<i32>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[rdaw_macros::api_protocol(FooOperations)]
+#[protocol(operations(FooOperations), error = Error)]
 struct TestProtocol;
 
 struct TestBackend;
 
-#[rdaw_macros::api_handler(TestProtocol, FooOperations)]
+#[handler(protocol = TestProtocol, operations = FooOperations)]
 impl TestBackend {
     fn get_foo(&self) -> Result<i32> {
         Ok(1)
