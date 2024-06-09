@@ -1,4 +1,7 @@
 use futures::StreamExt;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng};
 use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackNode, TrackOperations};
 use rdaw_api::{Error, Result};
 
@@ -332,6 +335,71 @@ fn move_track() -> Result<()> {
             client.move_track(root, 0, child2, 0).await,
             Err(Error::RecursiveTrack)
         ));
+
+        Ok(())
+    })
+}
+
+#[test]
+fn move_track_randomized() -> Result<()> {
+    const NUM_TRACKS: usize = 10;
+    const NUM_ITERATIONS: usize = 1000;
+
+    run_test(|client| async move {
+        let mut rng = SmallRng::seed_from_u64(1);
+        let mut tracks = Vec::new();
+
+        for _ in 0..NUM_TRACKS {
+            tracks.push(client.create_track().await?);
+        }
+
+        let root = tracks[0];
+        for &child in &tracks[1..] {
+            client.append_track_child(root, child).await?;
+        }
+
+        for _ in 0..NUM_ITERATIONS {
+            let old_parent_id = *tracks.choose(&mut rng).unwrap();
+            let old_parent_children = client.get_track_children(old_parent_id).await?;
+            if old_parent_children.is_empty() {
+                continue;
+            }
+
+            let old_index = rng.gen_range(0..old_parent_children.len());
+            let child_id = old_parent_children[old_index];
+
+            let new_parent_id = *tracks.choose(&mut rng).unwrap();
+            let new_index = if old_parent_id == new_parent_id {
+                if old_parent_children.len() == 1 {
+                    continue;
+                }
+
+                rng.gen_range(0..old_parent_children.len())
+            } else {
+                let new_parent_len = client.get_track_children(new_parent_id).await?.len();
+                rng.gen_range(0..=new_parent_len)
+            };
+
+            let mut is_recursive = false;
+            let hierarchy = client.get_track_hierarchy(child_id).await?;
+            hierarchy.dfs(child_id, |node| {
+                is_recursive |= node.id == new_parent_id;
+            });
+
+            eprintln!(
+                "Move {child_id:?} from {old_parent_id:?}:{old_index} to {new_parent_id:?}:{new_index}"
+            );
+
+            let res = client
+                .move_track(old_parent_id, old_index, new_parent_id, new_index)
+                .await;
+
+            if is_recursive {
+                assert!(matches!(res, Err(Error::RecursiveTrack)));
+            } else {
+                res?;
+            }
+        }
 
         Ok(())
     })

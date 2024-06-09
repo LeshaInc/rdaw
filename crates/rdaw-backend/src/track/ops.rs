@@ -129,18 +129,58 @@ impl Backend {
         self.subscribers.track_hierarchy.notify(id, event);
     }
 
+    fn track_dfs(&mut self, root_id: TrackId, mut callback: impl FnMut(&mut Self, TrackId)) {
+        self.track_dfs_inner(root_id, &mut callback)
+    }
+
+    fn track_dfs_inner(&mut self, root_id: TrackId, callback: &mut impl FnMut(&mut Self, TrackId)) {
+        callback(self, root_id);
+
+        let children = std::mem::take(&mut self.hub.tracks[root_id].links.children);
+
+        for &child_id in &children {
+            self.track_dfs_inner(child_id, callback);
+        }
+
+        self.hub.tracks[root_id].links.children = children;
+    }
+
+    fn recompute_ancestors(&mut self, root_id: TrackId) {
+        self.track_dfs(root_id, |this, track_id| {
+            if !this.hub.tracks.contains_id(track_id) {
+                return;
+            }
+
+            let mut ancestors = std::mem::take(&mut this.hub.tracks[track_id].links.ancestors);
+            let direct_ancestors =
+                std::mem::take(&mut this.hub.tracks[track_id].links.direct_ancestors);
+
+            ancestors.clear();
+
+            for &ancestor_id in &direct_ancestors {
+                ancestors.insert(ancestor_id);
+
+                let Some(ancestor) = this.hub.tracks.get(ancestor_id) else {
+                    continue;
+                };
+
+                for &transitive_ancestor in &ancestor.links.ancestors {
+                    ancestors.insert(transitive_ancestor);
+                }
+            }
+
+            this.hub.tracks[track_id].links.direct_ancestors = direct_ancestors;
+            this.hub.tracks[track_id].links.ancestors = ancestors;
+        });
+    }
+
     fn add_track_ancestor(&mut self, track_id: TrackId, ancestor_id: TrackId) {
-        let Some([track, ancestor]) = self.hub.tracks.get_disjoint_mut([track_id, ancestor_id])
-        else {
+        let Some(track) = self.hub.tracks.get_mut(track_id) else {
             return;
         };
 
         track.links.direct_ancestors.insert(ancestor_id);
-        track.links.ancestors.insert(ancestor_id);
-
-        for &transitive_ancestor_id in &ancestor.links.ancestors {
-            track.links.ancestors.insert(transitive_ancestor_id);
-        }
+        self.recompute_ancestors(track_id);
     }
 
     fn remove_track_ancestor(&mut self, track_id: TrackId, ancestor_id: TrackId) {
@@ -149,23 +189,7 @@ impl Backend {
         };
 
         track.links.direct_ancestors.remove(&ancestor_id);
-
-        let mut new_ancestors = std::mem::take(&mut track.links.ancestors);
-        new_ancestors.clear();
-
-        for &ancestor_id in &self.hub.tracks[track_id].links.direct_ancestors {
-            new_ancestors.insert(ancestor_id);
-
-            let Some(ancestor) = self.hub.tracks.get(ancestor_id) else {
-                continue;
-            };
-
-            for &transitive_ancestor in &ancestor.links.ancestors {
-                new_ancestors.insert(transitive_ancestor);
-            }
-        }
-
-        self.hub.tracks[track_id].links.ancestors = new_ancestors;
+        self.recompute_ancestors(track_id);
     }
 
     #[instrument(skip_all, err)]
