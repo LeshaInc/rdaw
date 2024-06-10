@@ -2,20 +2,17 @@ use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::time::{BeatTime, Time};
 use rdaw_core::time::RealTime;
 
-use crate::{Object, Uuid};
+use crate::document;
+use crate::object::{DeserializationContext, Object, SerializationContext};
 
 #[derive(Debug, Clone)]
 pub struct TempoMap {
-    uuid: Uuid,
     beats_per_minute: f32,
 }
 
 impl TempoMap {
     pub fn new(beats_per_minute: f32) -> TempoMap {
-        TempoMap {
-            uuid: Uuid::new_v4(),
-            beats_per_minute,
-        }
+        TempoMap { beats_per_minute }
     }
 
     pub fn to_real(&self, time: Time) -> RealTime {
@@ -47,7 +44,14 @@ impl TempoMap {
 impl Object for TempoMap {
     type Id = TempoMapId;
 
-    fn uuid(&self) -> Uuid {
-        self.uuid
+    fn serialize(&self, _ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+        todo!()
+    }
+
+    fn deserialize(_ctx: &DeserializationContext<'_>, _data: &[u8]) -> Result<Self, document::Error>
+    where
+        Self: Sized,
+    {
+        todo!()
     }
 }

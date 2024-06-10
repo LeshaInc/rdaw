@@ -9,11 +9,11 @@ use rdaw_core::collections::HashSet;
 use slotmap::SlotMap;
 
 pub use self::view::{TrackView, TrackViewCache};
-use crate::{Hub, Object, Uuid};
+use crate::document;
+use crate::object::{DeserializationContext, Hub, Object, SerializationContext};
 
 #[derive(Debug, Clone)]
 pub struct Track {
-    uuid: Uuid,
     pub name: String,
     pub links: TrackLinks,
     pub items: SlotMap<TrackItemId, TrackItem>,
@@ -22,7 +22,6 @@ pub struct Track {
 impl Track {
     pub fn new(name: String) -> Track {
         Track {
-            uuid: Uuid::new_v4(),
             name,
             links: TrackLinks::default(),
             items: SlotMap::default(),
@@ -33,24 +32,31 @@ impl Track {
 impl Object for Track {
     type Id = TrackId;
 
-    fn uuid(&self) -> Uuid {
-        self.uuid
-    }
-
-    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
-        callback(self.uuid);
-
+    fn trace(&self, hub: &Hub, callback: &mut dyn FnMut(&dyn Object)) {
         self.links.trace(hub, callback);
 
         for item in self.items.values() {
             match item.inner {
                 ItemId::Audio(id) => {
                     if let Some(item) = hub.audio_items.get(id) {
-                        item.trace(hub, callback);
+                        callback(item);
                     }
                 }
             }
         }
+    }
+
+    fn serialize(&self, ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+        let _ = ctx;
+        todo!()
+    }
+
+    fn deserialize(ctx: &DeserializationContext<'_>, data: &[u8]) -> Result<Self, document::Error>
+    where
+        Self: Sized,
+    {
+        let _ = (ctx, data);
+        todo!()
     }
 }
 
@@ -62,10 +68,10 @@ pub struct TrackLinks {
 }
 
 impl TrackLinks {
-    pub fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
+    pub fn trace(&self, hub: &Hub, callback: &mut dyn FnMut(&dyn Object)) {
         for &child_id in &self.children {
             if let Some(child) = hub.tracks.get(child_id) {
-                child.trace(hub, callback);
+                callback(child);
             }
         }
     }

@@ -5,6 +5,7 @@ use rdaw_api::{BackendProtocol, Error, Result};
 use tracing::instrument;
 
 use super::Blob;
+use crate::object::Metadata;
 use crate::Backend;
 
 #[rdaw_rpc::handler(protocol = BackendProtocol, operations = BlobOperations)]
@@ -15,8 +16,8 @@ impl Backend {
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);
 
-        let blob = Blob::new_internal(hash);
-        let id = self.hub.blobs.insert(blob);
+        let blob = Blob::Internal { hash };
+        let id = self.hub.blobs.insert(Metadata::new(), blob);
 
         Ok(id)
     }
@@ -29,8 +30,8 @@ impl Backend {
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);
 
-        let blob = Blob::new_external(hash, path);
-        let id = self.hub.blobs.insert(blob);
+        let blob = Blob::External { hash, path };
+        let id = self.hub.blobs.insert(Metadata::new(), blob);
 
         Ok(id)
     }

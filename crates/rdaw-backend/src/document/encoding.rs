@@ -1,5 +1,4 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{Error, Result};
 
@@ -14,7 +13,7 @@ pub fn extract_version(data: &[u8]) -> Result<(u32, &[u8]), Error> {
     Ok((version, &data[4..]))
 }
 
-pub fn deserialize<T: DeserializeOwned>(data: &[u8]) -> Result<T, Error> {
+pub fn deserialize<'de, T: Deserialize<'de>>(data: &'de [u8]) -> Result<T, Error> {
     postcard::from_bytes(data).map_err(|_| Error::InvalidDocument)
 }
 

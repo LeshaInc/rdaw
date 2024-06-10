@@ -5,40 +5,18 @@ use std::path::PathBuf;
 
 use blake3::Hash;
 use rdaw_api::blob::BlobId;
-use rdaw_core::Uuid;
 
 pub use self::cache::BlobCache;
-use crate::Object;
+use crate::document;
+use crate::object::{Object, SerializationContext};
 
 #[derive(Debug, Clone)]
 pub enum Blob {
-    Internal {
-        uuid: Uuid,
-        hash: Hash,
-    },
-    External {
-        uuid: Uuid,
-        hash: Hash,
-        path: PathBuf,
-    },
+    Internal { hash: Hash },
+    External { hash: Hash, path: PathBuf },
 }
 
 impl Blob {
-    pub fn new_internal(hash: Hash) -> Blob {
-        Blob::Internal {
-            uuid: Uuid::new_v4(),
-            hash,
-        }
-    }
-
-    pub fn new_external(hash: Hash, path: PathBuf) -> Blob {
-        Blob::External {
-            uuid: Uuid::new_v4(),
-            hash,
-            path,
-        }
-    }
-
     pub fn hash(&self) -> Hash {
         match *self {
             Blob::Internal { hash, .. } => hash,
@@ -50,10 +28,17 @@ impl Blob {
 impl Object for Blob {
     type Id = BlobId;
 
-    fn uuid(&self) -> Uuid {
-        match *self {
-            Blob::Internal { uuid, .. } => uuid,
-            Blob::External { uuid, .. } => uuid,
-        }
+    fn serialize(&self, _ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+        todo!()
+    }
+
+    fn deserialize(
+        _ctx: &crate::object::DeserializationContext<'_>,
+        _data: &[u8],
+    ) -> Result<Self, document::Error>
+    where
+        Self: Sized,
+    {
+        todo!()
     }
 }

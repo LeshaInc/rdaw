@@ -1,26 +1,31 @@
 use rdaw_api::item::AudioItemId;
 use rdaw_api::source::AudioSourceId;
 
-use crate::{Hub, Object, Uuid};
+use crate::document;
+use crate::object::{DeserializationContext, Hub, Object, SerializationContext};
 
 #[derive(Debug, Clone)]
 pub struct AudioItem {
-    uuid: Uuid,
-    pub source: AudioSourceId,
+    pub source_id: AudioSourceId,
 }
 
 impl Object for AudioItem {
     type Id = AudioItemId;
 
-    fn uuid(&self) -> Uuid {
-        self.uuid
+    fn trace(&self, hub: &Hub, callback: &mut dyn FnMut(&dyn Object)) {
+        if let Some(source) = hub.audio_sources.get(self.source_id) {
+            callback(source);
+        }
     }
 
-    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
-        callback(self.uuid);
+    fn serialize(&self, _ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+        todo!()
+    }
 
-        if let Some(source) = hub.audio_sources.get(self.source) {
-            source.trace(hub, callback);
-        }
+    fn deserialize(_ctx: &DeserializationContext<'_>, _data: &[u8]) -> Result<Self, document::Error>
+    where
+        Self: Sized,
+    {
+        todo!()
     }
 }

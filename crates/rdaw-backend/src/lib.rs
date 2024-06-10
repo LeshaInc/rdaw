@@ -1,11 +1,9 @@
 pub mod arrangement;
 pub mod blob;
 pub mod document;
-pub mod hub;
 pub mod item;
+pub mod object;
 pub mod source;
-pub mod storage;
-pub mod subscribers;
 pub mod tempo_map;
 #[cfg(test)]
 pub mod tests;
@@ -14,32 +12,19 @@ pub mod track;
 use std::sync::Arc;
 
 use rdaw_api::{BackendProtocol, BackendRequest, Error, Result};
-use rdaw_core::Uuid;
 use rdaw_rpc::transport::{LocalServerTransport, ServerTransport};
 use rdaw_rpc::{ClientMessage, StreamIdAllocator};
-use slotmap::Key;
 
 use self::blob::BlobCache;
-use self::hub::{Hub, SubHub};
+use self::object::{Hub, SubscribersHub};
 use self::track::TrackViewCache;
-
-pub trait Object {
-    type Id: Key;
-
-    fn uuid(&self) -> Uuid;
-
-    fn trace<F: FnMut(Uuid)>(&self, hub: &Hub, callback: &mut F) {
-        let _unused = hub;
-        callback(self.uuid());
-    }
-}
 
 #[derive(Debug)]
 pub struct Backend {
     transport: LocalServerTransport<BackendProtocol>,
 
     hub: Hub,
-    subscribers: SubHub,
+    subscribers: SubscribersHub,
 
     blob_cache: BlobCache,
     track_view_cache: TrackViewCache,
@@ -53,7 +38,7 @@ impl Backend {
             transport,
 
             hub: Hub::default(),
-            subscribers: SubHub::new(stream_id_allocator.clone()),
+            subscribers: SubscribersHub::new(stream_id_allocator.clone()),
 
             blob_cache: BlobCache::default(),
             track_view_cache: TrackViewCache::default(),

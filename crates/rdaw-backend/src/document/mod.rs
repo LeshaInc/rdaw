@@ -1,5 +1,5 @@
 mod database;
-mod encoding;
+pub mod encoding;
 mod metadata;
 #[cfg(test)]
 mod tests;

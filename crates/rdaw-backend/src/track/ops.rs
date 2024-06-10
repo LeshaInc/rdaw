@@ -9,6 +9,7 @@ use slotmap::Key;
 use tracing::instrument;
 
 use super::Track;
+use crate::object::Metadata;
 use crate::Backend;
 
 #[rdaw_rpc::handler(protocol = BackendProtocol, operations = TrackOperations)]
@@ -16,7 +17,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn list_tracks(&self) -> Result<Vec<TrackId>> {
-        let tracks = self.hub.tracks.iter().map(|(id, _)| id).collect();
+        let tracks = self.hub.tracks.iter().map(|(id, _, _)| id).collect();
         Ok(tracks)
     }
 
@@ -24,7 +25,7 @@ impl Backend {
     #[handler]
     pub fn create_track(&mut self) -> Result<TrackId> {
         let track = Track::new(String::new());
-        let id = self.hub.tracks.insert(track);
+        let id = self.hub.tracks.insert(Metadata::new(), track);
 
         let mut id_str = format!("{:?}", id.data());
         if let Some(v) = id_str.find('v') {
@@ -39,7 +40,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_track(&mut self, id: TrackId) -> Result<StreamId> {
-        if !self.hub.tracks.contains_id(id) {
+        if !self.hub.tracks.has(id) {
             return Err(Error::InvalidId);
         }
 
@@ -49,7 +50,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_track_hierarchy(&mut self, id: TrackId) -> Result<StreamId> {
-        if !self.hub.tracks.contains_id(id) {
+        if !self.hub.tracks.has(id) {
             return Err(Error::InvalidId);
         }
 
@@ -59,11 +60,11 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_track_view(&mut self, id: TrackViewId) -> Result<StreamId> {
-        if !self.hub.arrangements.contains_id(id.arrangement_id) {
+        if !self.hub.arrangements.has(id.arrangement_id) {
             return Err(Error::InvalidId);
         }
 
-        if !self.hub.tracks.contains_id(id.track_id) {
+        if !self.hub.tracks.has(id.track_id) {
             return Err(Error::InvalidId);
         }
 
@@ -147,7 +148,7 @@ impl Backend {
 
     fn recompute_ancestors(&mut self, root_id: TrackId) {
         self.track_dfs(root_id, |this, track_id| {
-            if !this.hub.tracks.contains_id(track_id) {
+            if !this.hub.tracks.has(track_id) {
                 return;
             }
 
@@ -208,7 +209,7 @@ impl Backend {
         child_id: TrackId,
         index: usize,
     ) -> Result<()> {
-        if !self.hub.tracks.contains_id(parent_id) || !self.hub.tracks.contains_id(child_id) {
+        if !self.hub.tracks.has(parent_id) || !self.hub.tracks.has(child_id) {
             return Err(Error::InvalidId);
         }
 
@@ -441,8 +442,8 @@ impl Backend {
         view_id: TrackViewId,
         item_id: TrackItemId,
     ) -> Result<TrackViewItem> {
-        if !self.hub.arrangements.contains_id(view_id.arrangement_id)
-            || !self.hub.tracks.contains_id(view_id.track_id)
+        if !self.hub.arrangements.has(view_id.arrangement_id)
+            || !self.hub.tracks.has(view_id.track_id)
         {
             return Err(Error::InvalidId);
         }
@@ -459,8 +460,8 @@ impl Backend {
         start: Option<Time>,
         end: Option<Time>,
     ) -> Result<Vec<(TrackItemId, TrackViewItem)>> {
-        if !self.hub.arrangements.contains_id(view_id.arrangement_id)
-            || !self.hub.tracks.contains_id(view_id.track_id)
+        if !self.hub.arrangements.has(view_id.arrangement_id)
+            || !self.hub.tracks.has(view_id.track_id)
         {
             return Err(Error::InvalidId);
         }

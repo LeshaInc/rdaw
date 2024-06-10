@@ -8,11 +8,11 @@ use rdaw_api::{BackendProtocol, Result};
 use rdaw_rpc::transport::ServerTransport;
 use rdaw_rpc::{StreamId, StreamIdAllocator, Subscribers};
 
+use super::Storage;
 use crate::arrangement::Arrangement;
 use crate::blob::Blob;
 use crate::item::AudioItem;
 use crate::source::AudioSource;
-use crate::storage::Storage;
 use crate::tempo_map::TempoMap;
 use crate::track::Track;
 
@@ -27,16 +27,16 @@ pub struct Hub {
 }
 
 #[derive(Debug)]
-pub struct SubHub {
+pub struct SubscribersHub {
     pub arrangement: Subscribers<ArrangementId, ArrangementEvent>,
     pub track: Subscribers<TrackId, TrackEvent>,
     pub track_hierarchy: Subscribers<TrackId, TrackHierarchyEvent>,
     pub track_view: Subscribers<TrackViewId, TrackViewEvent>,
 }
 
-impl SubHub {
-    pub fn new(id_allocator: Arc<StreamIdAllocator>) -> SubHub {
-        SubHub {
+impl SubscribersHub {
+    pub fn new(id_allocator: Arc<StreamIdAllocator>) -> SubscribersHub {
+        SubscribersHub {
             arrangement: Subscribers::new(id_allocator.clone()),
             track: Subscribers::new(id_allocator.clone()),
             track_hierarchy: Subscribers::new(id_allocator.clone()),

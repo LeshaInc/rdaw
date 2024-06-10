@@ -9,6 +9,7 @@ use slotmap::Key;
 use tracing::instrument;
 
 use super::Arrangement;
+use crate::object::Metadata;
 use crate::tempo_map::TempoMap;
 use crate::track::Track;
 use crate::Backend;
@@ -18,7 +19,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn list_arrangements(&self) -> Result<Vec<ArrangementId>> {
-        let arrangements = self.hub.arrangements.iter().map(|(id, _)| id).collect();
+        let arrangements = self.hub.arrangements.iter().map(|(id, _, _)| id).collect();
         Ok(arrangements)
     }
 
@@ -26,13 +27,18 @@ impl Backend {
     #[handler]
     pub fn create_arrangement(&mut self) -> Result<ArrangementId> {
         let tempo_map = TempoMap::new(120.0);
-        let tempo_map_id = self.hub.tempo_maps.insert(tempo_map);
+        let tempo_map_id = self.hub.tempo_maps.insert(Metadata::new(), tempo_map);
 
         let main_track = Track::new("Main Track".into());
-        let main_track_id = self.hub.tracks.insert(main_track);
+        let main_track_id = self.hub.tracks.insert(Metadata::new(), main_track);
 
-        let arrangement = Arrangement::new(tempo_map_id, main_track_id, String::new());
-        let arrangement_id = self.hub.arrangements.insert(arrangement);
+        let arrangement = Arrangement {
+            tempo_map_id,
+            main_track_id,
+            name: String::new(),
+        };
+
+        let arrangement_id = self.hub.arrangements.insert(Metadata::new(), arrangement);
 
         let mut id_str = format!("{:?}", arrangement_id.data());
         if let Some(v) = id_str.find('v') {
@@ -47,7 +53,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_arrangement(&mut self, id: ArrangementId) -> Result<StreamId> {
-        if !self.hub.arrangements.contains_id(id) {
+        if !self.hub.arrangements.has(id) {
             return Err(Error::InvalidId);
         }
 
