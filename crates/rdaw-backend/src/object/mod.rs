@@ -2,14 +2,13 @@ mod hub;
 mod storage;
 
 pub use rdaw_core::Uuid;
-use slotmap::Key;
 
 pub use self::hub::{Hub, SubscribersHub};
 pub use self::storage::Storage;
 use crate::document;
 
 pub trait Object: AsDynObject {
-    type Id: Key
+    type Id: ObjectId
     where
         Self: Sized;
 
@@ -22,6 +21,10 @@ pub trait Object: AsDynObject {
     fn deserialize(ctx: &DeserializationContext<'_>, data: &[u8]) -> Result<Self, document::Error>
     where
         Self: Sized;
+}
+
+pub trait ObjectId: slotmap::Key {
+    type Object: Object;
 }
 
 pub trait AsDynObject {
@@ -40,6 +43,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Metadata {
         Metadata {
             uuid: Uuid::new_v4(),
@@ -54,7 +58,7 @@ pub struct SerializationContext<'a> {
 }
 
 impl SerializationContext<'_> {
-    pub fn get_uuid<T: Object>(&self, id: T::Id) -> Result<Uuid, document::Error> {
+    pub fn get_uuid<I: ObjectId>(&self, id: I) -> Result<Uuid, document::Error> {
         let _ = id;
         todo!()
     }
@@ -67,7 +71,7 @@ pub struct DeserializationContext<'a> {
 }
 
 impl DeserializationContext<'_> {
-    pub fn get_id<T: Object>(&self, uuid: Uuid) -> Result<T::Id, document::Error> {
+    pub fn get_id<I: ObjectId>(&self, uuid: Uuid) -> Result<I, document::Error> {
         let _ = uuid;
         todo!()
     }

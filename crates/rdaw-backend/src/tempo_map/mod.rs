@@ -3,7 +3,11 @@ use rdaw_api::time::{BeatTime, Time};
 use rdaw_core::time::RealTime;
 
 use crate::document;
-use crate::object::{DeserializationContext, Object, SerializationContext};
+use crate::object::{DeserializationContext, Object, ObjectId, SerializationContext};
+
+impl ObjectId for TempoMapId {
+    type Object = TempoMap;
+}
 
 #[derive(Debug, Clone)]
 pub struct TempoMap {

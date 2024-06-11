@@ -1,8 +1,10 @@
 use std::ops::{Add, Sub};
 
+use serde::{Deserialize, Serialize};
+
 const NANOS_IN_SEC: i64 = 1_000_000_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RealTime {
     nanos: i64,
 }

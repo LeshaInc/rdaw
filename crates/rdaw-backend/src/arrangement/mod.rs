@@ -6,7 +6,11 @@ use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::track::TrackId;
 
 use crate::document;
-use crate::object::{DeserializationContext, Hub, Object, SerializationContext};
+use crate::object::{DeserializationContext, Hub, Object, ObjectId, SerializationContext};
+
+impl ObjectId for ArrangementId {
+    type Object = Arrangement;
+}
 
 #[derive(Debug, Clone)]
 pub struct Arrangement {

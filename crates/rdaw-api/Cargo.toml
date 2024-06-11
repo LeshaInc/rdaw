@@ -9,5 +9,6 @@ rdaw-rpc.workspace = true
 
 fixed.workspace = true
 futures.workspace = true
+serde.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true

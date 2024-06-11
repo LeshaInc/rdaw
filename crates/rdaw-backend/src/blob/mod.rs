@@ -8,7 +8,11 @@ use rdaw_api::blob::BlobId;
 
 pub use self::cache::BlobCache;
 use crate::document;
-use crate::object::{Object, SerializationContext};
+use crate::object::{Object, ObjectId, SerializationContext};
+
+impl ObjectId for BlobId {
+    type Object = Blob;
+}
 
 #[derive(Debug, Clone)]
 pub enum Blob {

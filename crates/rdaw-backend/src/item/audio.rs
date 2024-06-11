@@ -2,7 +2,11 @@ use rdaw_api::item::AudioItemId;
 use rdaw_api::source::AudioSourceId;
 
 use crate::document;
-use crate::object::{DeserializationContext, Hub, Object, SerializationContext};
+use crate::object::{DeserializationContext, Hub, Object, ObjectId, SerializationContext};
+
+impl ObjectId for AudioItemId {
+    type Object = AudioItem;
+}
 
 #[derive(Debug, Clone)]
 pub struct AudioItem {

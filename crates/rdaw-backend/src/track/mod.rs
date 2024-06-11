@@ -1,3 +1,4 @@
+mod encoding;
 mod ops;
 #[cfg(test)]
 mod tests;
@@ -10,7 +11,11 @@ use slotmap::SlotMap;
 
 pub use self::view::{TrackView, TrackViewCache};
 use crate::document;
-use crate::object::{DeserializationContext, Hub, Object, SerializationContext};
+use crate::object::{DeserializationContext, Hub, Object, ObjectId, SerializationContext};
+
+impl ObjectId for TrackId {
+    type Object = Track;
+}
 
 #[derive(Debug, Clone)]
 pub struct Track {
@@ -47,16 +52,14 @@ impl Object for Track {
     }
 
     fn serialize(&self, ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
-        let _ = ctx;
-        todo!()
+        self::encoding::serialize(ctx, self)
     }
 
     fn deserialize(ctx: &DeserializationContext<'_>, data: &[u8]) -> Result<Self, document::Error>
     where
         Self: Sized,
     {
-        let _ = (ctx, data);
-        todo!()
+        self::encoding::deserialize(ctx, data)
     }
 }
 

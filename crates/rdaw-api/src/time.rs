@@ -2,14 +2,15 @@ use std::ops::{Add, Sub};
 
 use fixed::types::I32F32;
 use rdaw_core::time::RealTime;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Time {
     Real(RealTime),
     Beat(BeatTime),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct BeatTime {
     beats: I32F32,
 }
