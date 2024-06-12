@@ -1,3 +1,5 @@
+mod blob;
+mod compression;
 mod database;
 pub mod encoding;
 mod metadata;
@@ -5,17 +7,22 @@ mod metadata;
 mod tests;
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
+use blake3::Hash;
 use chrono::{DateTime, Utc};
 use rdaw_core::Uuid;
 
+use self::blob::{Blob, BlobChunk, BlobId};
+pub use self::blob::{BlobReader, BlobWriter};
+pub use self::compression::Compression;
 use self::database::Database;
 pub use self::metadata::Metadata;
 
 #[derive(Debug)]
 pub struct Document {
     metadata: Metadata,
-    db: Database,
+    db: Arc<Mutex<Database>>,
     path: Option<PathBuf>,
 }
 
@@ -26,7 +33,7 @@ impl Document {
 
         Ok(Document {
             metadata,
-            db,
+            db: Arc::new(Mutex::new(db)),
             path: None,
         })
     }
@@ -36,7 +43,7 @@ impl Document {
 
         let document = Document {
             metadata,
-            db,
+            db: Arc::new(Mutex::new(db)),
             path: Some(path.into()),
         };
 
@@ -52,20 +59,49 @@ impl Document {
     }
 
     pub fn save(&self, revision: Revision) -> Result<()> {
-        self.db.save(revision)
+        let db = self.db.lock().unwrap();
+        db.save(revision)
     }
 
     pub fn save_copy(&self, path: &Path, revision: Revision) -> Result<Document> {
-        let db = self.db.save_copy(path, revision, self.metadata)?;
+        let db = self.db.lock().unwrap();
+        let new_db = db.save_copy(path, revision, self.metadata)?;
+
         Ok(Document {
             metadata: self.metadata,
-            db,
+            db: Arc::new(Mutex::new(new_db)),
             path: Some(path.into()),
         })
     }
 
     pub fn revisions(&self) -> Result<Vec<(RevisionId, Revision)>> {
-        self.db.revisions()
+        let db = self.db.lock().unwrap();
+        db.revisions()
+    }
+
+    pub fn create_blob(&self, compression: Compression) -> Result<BlobWriter> {
+        let id = self.db.lock().unwrap().write_blob(Blob {
+            hash: None,
+            total_len: None,
+            compression,
+        })?;
+
+        let writer = BlobWriter::new(self.db.clone(), id, compression);
+        Ok(writer)
+    }
+
+    pub fn open_blob(&self, hash: Hash) -> Result<Option<BlobReader>> {
+        let Some((id, blob)) = self.db.lock().unwrap().find_blob(hash)? else {
+            return Ok(None);
+        };
+
+        let reader = BlobReader::new(self.db.clone(), id, blob);
+        Ok(Some(reader))
+    }
+
+    pub fn remove_blob(&self, hash: Hash) -> Result<()> {
+        let db = self.db.lock().unwrap();
+        db.remove_blob(hash)
     }
 }
 
@@ -73,6 +109,8 @@ impl Document {
 pub enum Error {
     #[error("invalid datetime")]
     InvalidDateTime,
+    #[error("invalid compression type")]
+    InvalidCompressionType,
     #[error("unsupported version")]
     UnsupportedVersion,
     #[error("invalid document")]

@@ -1,7 +1,9 @@
+use std::io::{Read, Write};
+
 use chrono::Utc;
 use tempfile::NamedTempFile;
 
-use super::{Document, Result, Revision, RevisionId};
+use super::{Compression, Document, Result, Revision, RevisionId};
 
 #[test]
 fn new() -> Result<()> {
@@ -61,6 +63,47 @@ fn revisions() -> Result<()> {
         doc.revisions()?,
         vec![(RevisionId(1), revision_1), (RevisionId(2), revision_2)]
     );
+
+    Ok(())
+}
+
+#[test]
+fn create_blob() -> Result<()> {
+    let doc = Document::new()?;
+
+    let compression_types = [Compression::None, Compression::Zstd];
+
+    let data_examples = [
+        vec![],
+        vec![1],
+        vec![1, 2, 3],
+        vec![0; 8192],
+        vec![0; 8193],
+        vec![0xFF; 23127],
+    ];
+
+    for compression in compression_types {
+        for data in &data_examples {
+            let mut writer = doc.create_blob(compression)?;
+            writer.write_all(&data)?;
+            let hash = writer.close()?;
+
+            let mut reader = doc.open_blob(hash)?.unwrap();
+            let mut buf = Vec::new();
+            reader.read_to_end(&mut buf)?;
+            assert_eq!(&buf, data);
+
+            doc.remove_blob(hash)?;
+        }
+    }
+
+    doc.save_copy(
+        "/tmp/test".as_ref(),
+        Revision {
+            created_at: Utc::now(),
+            time_spent_secs: 10,
+        },
+    )?;
 
     Ok(())
 }
