@@ -30,37 +30,39 @@ pub struct BlobChunk<'a> {
 #[derive(Debug)]
 pub struct BlobWriter {
     db: Arc<Mutex<Database>>,
-    blob_id: BlobId,
+    id: BlobId,
     hasher: Hasher,
     compression: Compression,
     offset: u64,
     buffer: Vec<u8>,
+    is_saved: bool,
 }
 
 impl BlobWriter {
     pub(super) fn new(
         db: Arc<Mutex<Database>>,
-        blob_id: BlobId,
+        id: BlobId,
         compression: Compression,
     ) -> BlobWriter {
         BlobWriter {
             db,
-            blob_id,
+            id,
             hasher: Hasher::new(),
             compression,
             offset: 0,
             buffer: Vec::with_capacity(CHUNK_SIZE),
+            is_saved: false,
         }
     }
 
-    fn flush_chunks(&mut self, close: bool) -> io::Result<()> {
-        while !self.buffer.is_empty() && (self.buffer.len() >= CHUNK_SIZE || close) {
+    fn flush_chunks(&mut self, save: bool) -> io::Result<()> {
+        while !self.buffer.is_empty() && (self.buffer.len() >= CHUNK_SIZE || save) {
             let chunk_len = CHUNK_SIZE.min(self.buffer.len());
 
             let data = self.compression.compress(&self.buffer[..chunk_len])?;
 
             let chunk = BlobChunk {
-                blob_id: self.blob_id,
+                blob_id: self.id,
                 offset: self.offset,
                 len: chunk_len as u64,
                 data,
@@ -76,20 +78,22 @@ impl BlobWriter {
         Ok(())
     }
 
-    fn close_inner(&mut self) -> io::Result<Hash> {
+    fn save_inner(&mut self) -> io::Result<Hash> {
         let hash = self.hasher.finalize();
 
         self.flush_chunks(true)?;
 
         let db = self.db.lock().unwrap();
-        db.finalize_blob(self.blob_id, hash, self.offset)
+        db.finalize_blob(self.id, hash, self.offset)
             .map_err(io::Error::other)?;
+
+        self.is_saved = true;
 
         Ok(hash)
     }
 
-    pub fn close(mut self) -> io::Result<Hash> {
-        self.close_inner()
+    pub fn save(mut self) -> io::Result<Hash> {
+        self.save_inner()
     }
 }
 
@@ -117,8 +121,12 @@ impl io::Write for BlobWriter {
 
 impl Drop for BlobWriter {
     fn drop(&mut self) {
-        if let Err(error) = self.close_inner() {
-            tracing::error!(?error, "Failed to save blob")
+        if !self.is_saved && !std::thread::panicking() {
+            tracing::warn!("Blob was not saved");
+
+            if let Ok(lock) = self.db.lock() {
+                let _ = lock.remove_unsaved_blob(self.id);
+            }
         }
     }
 }

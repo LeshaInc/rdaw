@@ -239,6 +239,12 @@ impl Database {
         Ok(())
     }
 
+    pub fn remove_unsaved_blob(&self, id: BlobId) -> Result<()> {
+        let mut stmt = self.db.prepare_cached("DELETE FROM blobs WHERE id = ?1")?;
+        stmt.execute(rusqlite::params![id.0])?;
+        Ok(())
+    }
+
     pub fn write_blob_chunk(&self, chunk: BlobChunk<'_>) -> Result<()> {
         let mut stmt = self.db.prepare_cached(
             "INSERT INTO blob_chunks (blob_id, offset, len, data) VALUES (?1, ?2, ?3, ?4)",

@@ -86,7 +86,7 @@ fn create_blob() -> Result<()> {
         for data in &data_examples {
             let mut writer = doc.create_blob(compression)?;
             writer.write_all(&data)?;
-            let hash = writer.close()?;
+            let hash = writer.save()?;
 
             let mut reader = doc.open_blob(hash)?.unwrap();
             let mut buf = Vec::new();
@@ -96,14 +96,6 @@ fn create_blob() -> Result<()> {
             doc.remove_blob(hash)?;
         }
     }
-
-    doc.save_copy(
-        "/tmp/test".as_ref(),
-        Revision {
-            created_at: Utc::now(),
-            time_spent_secs: 10,
-        },
-    )?;
 
     Ok(())
 }
