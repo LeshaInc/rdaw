@@ -33,13 +33,14 @@ impl Database {
             _temp_path: Some(temp_path),
         };
 
+        db.configure()?;
         db.initialize(metadata)?;
 
         Ok(db)
     }
 
     pub fn open(path: &Path) -> Result<(Database, Metadata)> {
-        let db = Database {
+        let mut db = Database {
             db: Connection::open_with_flags(
                 path,
                 OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -47,13 +48,27 @@ impl Database {
             _temp_path: None,
         };
 
+        db.configure()?;
+
         let version = db.read_version()?;
         if version != Some(Version::V1) {
             return Err(Error::InvalidDocument);
         }
 
         let metadata = db.read_metadata()?;
+
         Ok((db, metadata))
+    }
+
+    fn configure(&mut self) -> Result<()> {
+        self.db.execute_batch(
+            "
+            PRAGMA journal_mode = WAL;
+            PRAGMA synchronous = NORMAL;
+            PRAGMA locking_mode = EXCLUSIVE;
+            ",
+        )?;
+        Ok(())
     }
 
     fn initialize(&mut self, metadata: Metadata) -> Result<()> {
@@ -90,10 +105,7 @@ impl Database {
                 len INTEGER,
                 data BLOB
             );
-
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = NORMAL;
-        ",
+            ",
         )?;
         Ok(())
     }
@@ -131,8 +143,8 @@ impl Database {
     }
 
     pub fn save(&self, revision: Revision) -> Result<()> {
-        self.db.cache_flush()?;
         self.add_revision(revision)?;
+        self.db.execute_batch("PRAGMA wal_checkpoint(FULL)")?;
         Ok(())
     }
 
