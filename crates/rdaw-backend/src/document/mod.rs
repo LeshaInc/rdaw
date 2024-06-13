@@ -2,7 +2,6 @@ mod blob;
 mod compression;
 mod database;
 pub mod encoding;
-mod metadata;
 #[cfg(test)]
 mod tests;
 
@@ -11,47 +10,35 @@ use std::sync::{Arc, Mutex};
 
 use blake3::Hash;
 use chrono::{DateTime, Utc};
-use rdaw_core::Uuid;
 
 use self::blob::{Blob, BlobChunk, BlobId};
 pub use self::blob::{BlobReader, BlobWriter};
 pub use self::compression::Compression;
 use self::database::Database;
-pub use self::metadata::Metadata;
 
 #[derive(Debug)]
 pub struct Document {
-    metadata: Metadata,
     db: Arc<Mutex<Database>>,
     path: Option<PathBuf>,
 }
 
 impl Document {
     pub fn new() -> Result<Document> {
-        let metadata = Metadata::new(Uuid::new_v4());
-        let db = Database::new(metadata)?;
-
+        let db = Database::new()?;
         Ok(Document {
-            metadata,
             db: Arc::new(Mutex::new(db)),
             path: None,
         })
     }
 
     pub fn open(path: &Path) -> Result<Document> {
-        let (db, metadata) = Database::open(path)?;
-
+        let db = Database::open(path)?;
         let document = Document {
-            metadata,
             db: Arc::new(Mutex::new(db)),
             path: Some(path.into()),
         };
 
         Ok(document)
-    }
-
-    pub fn uuid(&self) -> Uuid {
-        self.metadata.uuid
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -65,10 +52,9 @@ impl Document {
 
     pub fn save_copy(&self, path: &Path, revision: Revision) -> Result<Document> {
         let db = self.db.lock().unwrap();
-        let new_db = db.save_copy(path, revision, self.metadata)?;
+        let new_db = db.save_copy(path, revision)?;
 
         Ok(Document {
-            metadata: self.metadata,
             db: Arc::new(Mutex::new(new_db)),
             path: Some(path.into()),
         })

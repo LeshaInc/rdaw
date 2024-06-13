@@ -4,7 +4,7 @@ use blake3::Hash;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
 
-use super::{Blob, BlobChunk, BlobId, Compression, Error, Metadata, Result, Revision, RevisionId};
+use super::{Blob, BlobChunk, BlobId, Compression, Error, Result, Revision, RevisionId};
 use crate::define_version_enum;
 
 define_version_enum! {
@@ -20,7 +20,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new(metadata: Metadata) -> Result<Database> {
+    pub fn new() -> Result<Database> {
         let temp_path = NamedTempFile::with_prefix(".rdaw-unsaved-")?.into_temp_path();
 
         let mut db = Database {
@@ -34,12 +34,12 @@ impl Database {
         };
 
         db.configure()?;
-        db.initialize(metadata)?;
+        db.initialize()?;
 
         Ok(db)
     }
 
-    pub fn open(path: &Path) -> Result<(Database, Metadata)> {
+    pub fn open(path: &Path) -> Result<Database> {
         let mut db = Database {
             db: Connection::open_with_flags(
                 path,
@@ -55,9 +55,7 @@ impl Database {
             return Err(Error::InvalidDocument);
         }
 
-        let metadata = db.read_metadata()?;
-
-        Ok((db, metadata))
+        Ok(db)
     }
 
     fn configure(&mut self) -> Result<()> {
@@ -71,20 +69,15 @@ impl Database {
         Ok(())
     }
 
-    fn initialize(&mut self, metadata: Metadata) -> Result<()> {
+    fn initialize(&mut self) -> Result<()> {
         self.create_schema()?;
         self.write_version(Version::LATEST)?;
-        self.write_metadata(metadata)?;
         Ok(())
     }
 
     fn create_schema(&self) -> Result<()> {
         self.db.execute_batch(
             "
-            CREATE TABLE metadata (
-                data BLOB
-            );
-
             CREATE TABLE revisions (
                 id INTEGER PRIMARY KEY ASC,
                 created_at TEXT,
@@ -128,32 +121,13 @@ impl Database {
         Ok(())
     }
 
-    fn read_metadata(&self) -> Result<Metadata> {
-        let data: Vec<u8> = self
-            .db
-            .query_row("SELECT data FROM metadata", [], |row| row.get(0))?;
-        Metadata::deserialize(&data)
-    }
-
-    fn write_metadata(&self, metadata: Metadata) -> Result<()> {
-        let data = metadata.serialize()?;
-        self.db
-            .execute("INSERT INTO metadata (data) VALUES (?1)", [data])?;
-        Ok(())
-    }
-
     pub fn save(&self, revision: Revision) -> Result<()> {
         self.add_revision(revision)?;
         self.db.execute_batch("PRAGMA wal_checkpoint(FULL)")?;
         Ok(())
     }
 
-    pub fn save_copy(
-        &self,
-        path: &Path,
-        revision: Revision,
-        metadata: Metadata,
-    ) -> Result<Database> {
+    pub fn save_copy(&self, path: &Path, revision: Revision) -> Result<Database> {
         let target_dir = path
             .parent()
             .map(|v| v.to_owned())
@@ -166,15 +140,13 @@ impl Database {
         let temp_path_str = temp_file.path().to_str().ok_or(Error::InvalidUtf8)?;
         self.db.execute("VACUUM INTO ?1", [temp_path_str])?;
 
-        let (new_db, _) = Database::open(temp_file.path())?;
+        let new_db = Database::open(temp_file.path())?;
         new_db.add_revision(revision)?;
-        new_db.write_metadata(metadata)?;
         drop(new_db);
 
         temp_file.persist(path).map_err(|e| Error::from(e.error))?;
 
-        let (new_db, _) = Database::open(path)?;
-        Ok(new_db)
+        Database::open(path)
     }
 
     pub fn revisions(&self) -> Result<Vec<(RevisionId, Revision)>> {
