@@ -7,7 +7,8 @@ use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
 
 use super::{
-    Blob, BlobChunk, BlobId, Compression, Error, ObjectRevision, Result, Revision, RevisionId,
+    Blob, BlobChunk, BlobId, Compression, DocumentRevision, Error, ObjectRevision, Result,
+    RevisionId,
 };
 use crate::define_version_enum;
 
@@ -150,13 +151,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn save(&mut self, revision: Revision) -> Result<()> {
+    pub fn save(&mut self, revision: DocumentRevision) -> Result<()> {
         self.save_revision(revision)?;
         self.db.execute_batch("PRAGMA wal_checkpoint(FULL)")?;
         Ok(())
     }
 
-    pub fn save_as(&self, path: &Path, revision: Revision) -> Result<Database> {
+    pub fn save_as(&self, path: &Path, revision: DocumentRevision) -> Result<Database> {
         let target_dir = path
             .parent()
             .map(|v| v.to_owned())
@@ -178,14 +179,14 @@ impl Database {
         Database::open(path)
     }
 
-    pub fn revisions(&self) -> Result<Vec<(RevisionId, Revision)>> {
+    pub fn revisions(&self) -> Result<Vec<(RevisionId, DocumentRevision)>> {
         let mut stmt = self
             .db
             .prepare_cached("SELECT id, created_at, time_spent FROM revisions")?;
 
         let iter = stmt.query_and_then([], |row| {
             let id = RevisionId(row.get(0)?);
-            let revision = Revision {
+            let revision = DocumentRevision {
                 created_at: row.get(1)?,
                 time_spent_secs: row.get(2)?,
             };
@@ -205,7 +206,7 @@ impl Database {
         Ok(id)
     }
 
-    fn save_revision(&mut self, revision: Revision) -> Result<()> {
+    fn save_revision(&mut self, revision: DocumentRevision) -> Result<()> {
         let mut stmt = self
             .db
             .prepare_cached("INSERT INTO revisions (created_at, time_spent) VALUES (?1, ?2)")?;

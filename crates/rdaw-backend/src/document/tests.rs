@@ -4,7 +4,7 @@ use chrono::Utc;
 use rdaw_core::Uuid;
 use tempfile::NamedTempFile;
 
-use super::{Compression, Document, Result, Revision, RevisionId};
+use super::{Compression, Document, DocumentRevision, Result, RevisionId};
 use crate::document::ObjectRevision;
 
 #[test]
@@ -17,7 +17,7 @@ fn new() -> Result<()> {
 fn save() -> Result<()> {
     let doc = Document::new()?;
 
-    let revision = Revision {
+    let revision = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 15,
     };
@@ -31,7 +31,7 @@ fn save() -> Result<()> {
 fn save_as() -> Result<()> {
     let orig = Document::new()?;
 
-    let revision = Revision {
+    let revision = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 15,
     };
@@ -49,13 +49,13 @@ fn save_as() -> Result<()> {
 fn revisions() -> Result<()> {
     let doc = Document::new()?;
 
-    let revision_1 = Revision {
+    let revision_1 = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 15,
     };
     doc.save(revision_1)?;
 
-    let revision_2 = Revision {
+    let revision_2 = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 30,
     };
@@ -151,7 +151,7 @@ fn write_object() -> Result<()> {
         })
     );
 
-    doc.save(Revision {
+    doc.save(DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 1,
     })?;

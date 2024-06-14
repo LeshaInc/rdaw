@@ -46,13 +46,13 @@ impl Document {
         self.path.as_deref()
     }
 
-    pub fn save(&self, revision: Revision) -> Result<()> {
+    pub fn save(&self, revision: DocumentRevision) -> Result<()> {
         let mut db = self.db.lock().unwrap();
         db.save(revision)?;
         Ok(())
     }
 
-    pub fn save_as(&self, path: &Path, revision: Revision) -> Result<Document> {
+    pub fn save_as(&self, path: &Path, revision: DocumentRevision) -> Result<Document> {
         let db = self.db.lock().unwrap();
         let new_db = db.save_as(path, revision)?;
         Ok(Document {
@@ -61,7 +61,7 @@ impl Document {
         })
     }
 
-    pub fn revisions(&self) -> Result<Vec<(RevisionId, Revision)>> {
+    pub fn revisions(&self) -> Result<Vec<(RevisionId, DocumentRevision)>> {
         let db = self.db.lock().unwrap();
         db.revisions()
     }
@@ -138,7 +138,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub struct RevisionId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Revision {
+pub struct DocumentRevision {
     pub created_at: DateTime<Utc>,
     pub time_spent_secs: u64,
 }
