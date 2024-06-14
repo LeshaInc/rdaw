@@ -1,40 +1,39 @@
+mod encoding;
 mod hub;
 mod storage;
 
 pub use rdaw_core::Uuid;
 
-pub use self::hub::{Hub, SubscribersHub};
+pub use self::encoding::{DeserializationContext, SerializationContext};
+pub use self::hub::{Hub, StorageRef, SubscribersHub};
 pub use self::storage::Storage;
 use crate::document;
 
-pub trait Object: AsDynObject {
-    type Id: ObjectId
-    where
-        Self: Sized;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ObjectType {
+    AudioItem,
+    AudioSource,
+    Track,
+    Arrangement,
+    TempoMap,
+    Blob,
+}
 
-    fn trace(&self, hub: &Hub, callback: &mut dyn FnMut(&dyn Object)) {
-        let _ = (hub, callback);
-    }
+pub trait Object: Sized {
+    type Id: ObjectId<Object = Self>;
 
-    fn serialize(&self, ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error>;
+    const TYPE: ObjectType;
 
-    fn deserialize(ctx: &DeserializationContext<'_>, data: &[u8]) -> Result<Self, document::Error>
-    where
-        Self: Sized;
+    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error>;
+
+    fn deserialize(
+        ctx: &mut DeserializationContext<'_>,
+        data: &[u8],
+    ) -> Result<Self, document::Error>;
 }
 
 pub trait ObjectId: slotmap::Key {
-    type Object: Object;
-}
-
-pub trait AsDynObject {
-    fn as_dyn_object(&self) -> &dyn Object;
-}
-
-impl<T: Object> AsDynObject for T {
-    fn as_dyn_object(&self) -> &dyn Object {
-        self
-    }
+    type Object: Object<Id = Self>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,31 +47,5 @@ impl Metadata {
         Metadata {
             uuid: Uuid::new_v4(),
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct SerializationContext<'a> {
-    #[allow(dead_code)]
-    hub: &'a Hub,
-}
-
-impl SerializationContext<'_> {
-    pub fn get_uuid<I: ObjectId>(&self, id: I) -> Result<Uuid, document::Error> {
-        let _ = id;
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-pub struct DeserializationContext<'a> {
-    #[allow(dead_code)]
-    hub: &'a mut Hub,
-}
-
-impl DeserializationContext<'_> {
-    pub fn get_id<I: ObjectId>(&self, uuid: Uuid) -> Result<I, document::Error> {
-        let _ = uuid;
-        todo!()
     }
 }

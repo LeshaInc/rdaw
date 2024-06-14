@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
 use rdaw_api::arrangement::{ArrangementEvent, ArrangementEvents, ArrangementId};
+use rdaw_api::document::DocumentId;
 use rdaw_api::track::{
     TrackEvent, TrackEvents, TrackHierarchyEvent, TrackId, TrackViewEvent, TrackViewId,
 };
 use rdaw_api::{BackendProtocol, Result};
 use rdaw_rpc::transport::ServerTransport;
 use rdaw_rpc::{StreamId, StreamIdAllocator, Subscribers};
+use slotmap::SlotMap;
 
-use super::Storage;
+use super::{Object, Storage};
 use crate::arrangement::Arrangement;
 use crate::blob::Blob;
+use crate::document::Document;
 use crate::item::AudioItem;
 use crate::source::AudioSource;
 use crate::tempo_map::TempoMap;
@@ -18,6 +21,8 @@ use crate::track::Track;
 
 #[derive(Debug, Default)]
 pub struct Hub {
+    pub documents: SlotMap<DocumentId, Document>,
+
     pub arrangements: Storage<Arrangement>,
     pub audio_items: Storage<AudioItem>,
     pub audio_sources: Storage<AudioSource>,
@@ -25,6 +30,43 @@ pub struct Hub {
     pub tempo_maps: Storage<TempoMap>,
     pub tracks: Storage<Track>,
 }
+
+impl Hub {
+    pub fn storage<T: StorageRef>(&self) -> &Storage<T> {
+        T::storage_ref(self)
+    }
+
+    pub fn storage_mut<T: StorageRef>(&mut self) -> &mut Storage<T> {
+        T::storage_ref_mut(self)
+    }
+}
+
+pub trait StorageRef: Object + Sized {
+    fn storage_ref(hub: &Hub) -> &Storage<Self>;
+
+    fn storage_ref_mut(hub: &mut Hub) -> &mut Storage<Self>;
+}
+
+macro_rules! impl_storage_ref {
+    ($field:ident: $ty:ty) => {
+        impl StorageRef for $ty {
+            fn storage_ref(hub: &Hub) -> &Storage<Self> {
+                &hub.$field
+            }
+
+            fn storage_ref_mut(hub: &mut Hub) -> &mut Storage<Self> {
+                &mut hub.$field
+            }
+        }
+    };
+}
+
+impl_storage_ref!(arrangements: Arrangement);
+impl_storage_ref!(audio_items: AudioItem);
+impl_storage_ref!(audio_sources: AudioSource);
+impl_storage_ref!(blobs: Blob);
+impl_storage_ref!(tempo_maps: TempoMap);
+impl_storage_ref!(tracks: Track);
 
 #[derive(Debug)]
 pub struct SubscribersHub {

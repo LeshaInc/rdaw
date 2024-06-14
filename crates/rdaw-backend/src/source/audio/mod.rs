@@ -5,7 +5,7 @@ use rdaw_api::blob::BlobId;
 use rdaw_api::source::AudioSourceId;
 
 use crate::document;
-use crate::object::{DeserializationContext, Hub, Object, ObjectId, SerializationContext};
+use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for AudioSourceId {
     type Object = AudioSource;
@@ -20,20 +20,16 @@ pub struct AudioSource {
 impl Object for AudioSource {
     type Id = AudioSourceId;
 
-    fn trace(&self, hub: &Hub, callback: &mut dyn FnMut(&dyn Object)) {
-        if let Some(blob) = hub.blobs.get(self.blob_id) {
-            callback(blob);
-        }
-    }
+    const TYPE: ObjectType = ObjectType::AudioSource;
 
-    fn serialize(&self, _ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
         todo!()
     }
 
-    fn deserialize(_ctx: &DeserializationContext<'_>, _data: &[u8]) -> Result<Self, document::Error>
-    where
-        Self: Sized,
-    {
+    fn deserialize(
+        _ctx: &mut DeserializationContext<'_>,
+        _data: &[u8],
+    ) -> Result<Self, document::Error> {
         todo!()
     }
 }

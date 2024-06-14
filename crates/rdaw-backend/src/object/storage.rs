@@ -1,6 +1,7 @@
 use std::ops::{Index, IndexMut};
 
-use rdaw_core::collections::HashSet;
+use rdaw_core::collections::{HashMap, HashSet};
+use rdaw_core::Uuid;
 use slotmap::SlotMap;
 
 use super::{Metadata, Object};
@@ -9,6 +10,7 @@ use super::{Metadata, Object};
 pub struct Storage<T: Object> {
     map: SlotMap<T::Id, Entry<T>>,
     dirty_set: HashSet<T::Id>,
+    uuid_to_id: HashMap<Uuid, T::Id>,
 }
 
 #[derive(Debug)]
@@ -22,14 +24,19 @@ impl<T: Object> Storage<T> {
         Storage {
             map: SlotMap::default(),
             dirty_set: HashSet::default(),
+            uuid_to_id: HashMap::default(),
         }
     }
 
     pub fn prepare_insert(&mut self, metadata: Metadata) -> T::Id {
-        self.map.insert(Entry {
+        let id = self.map.insert(Entry {
             metadata,
             object: None,
-        })
+        });
+
+        self.uuid_to_id.insert(metadata.uuid, id);
+
+        id
     }
 
     pub fn finish_insert(&mut self, id: T::Id, object: T) {
@@ -44,6 +51,7 @@ impl<T: Object> Storage<T> {
         });
 
         self.dirty_set.insert(id);
+        self.uuid_to_id.insert(metadata.uuid, id);
 
         id
     }
@@ -67,6 +75,14 @@ impl<T: Object> Storage<T> {
             }
             Some(arr.map(|v| v.object.as_mut().unwrap()))
         })
+    }
+
+    pub fn get_metadata(&self, id: T::Id) -> Option<&Metadata> {
+        self.map.get(id).map(|v| &v.metadata)
+    }
+
+    pub fn lookup_uuid(&self, uuid: Uuid) -> Option<T::Id> {
+        self.uuid_to_id.get(&uuid).copied()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (T::Id, &Metadata, &T)> + '_ {

@@ -109,6 +109,10 @@ impl Document {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("invalid id")]
+    InvalidId,
+    #[error("invalid uuid")]
+    InvalidUuid,
     #[error("invalid datetime")]
     InvalidDateTime,
     #[error("invalid compression type")]

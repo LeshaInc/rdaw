@@ -8,7 +8,7 @@ use rdaw_api::blob::BlobId;
 
 pub use self::cache::BlobCache;
 use crate::document;
-use crate::object::{Object, ObjectId, SerializationContext};
+use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for BlobId {
     type Object = Blob;
@@ -32,17 +32,16 @@ impl Blob {
 impl Object for Blob {
     type Id = BlobId;
 
-    fn serialize(&self, _ctx: &SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    const TYPE: ObjectType = ObjectType::Blob;
+
+    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
         todo!()
     }
 
     fn deserialize(
-        _ctx: &crate::object::DeserializationContext<'_>,
+        _ctx: &mut DeserializationContext<'_>,
         _data: &[u8],
-    ) -> Result<Self, document::Error>
-    where
-        Self: Sized,
-    {
+    ) -> Result<Self, document::Error> {
         todo!()
     }
 }
