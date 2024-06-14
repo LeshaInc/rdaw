@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use blake3::Hash;
-use rdaw_core::collections::HashSet;
 use rdaw_core::Uuid;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
@@ -236,13 +235,7 @@ impl Database {
         Ok(id)
     }
 
-    pub fn finalize_blob(
-        &mut self,
-        id: BlobId,
-        hash: Hash,
-        total_len: u64,
-        dependencies: &[Hash],
-    ) -> Result<()> {
+    pub fn finalize_blob(&mut self, id: BlobId, hash: Hash, total_len: u64) -> Result<()> {
         let tx = self.db.transaction()?;
 
         {
@@ -250,29 +243,28 @@ impl Database {
             let exists = stmt.query_row([hash.as_bytes()], |row| row.get::<_, usize>(0))? > 0;
 
             if exists {
-                let mut stmt =
-                    tx.prepare_cached("SELECT b1.hash FROM blobs b1 JOIN blob_dependencies bd ON b1.id = bd.child_id WHERE bd.parent_id = ?1")?;
-                let existing_dependencies = stmt
-                    .query([id.0])?
-                    .mapped(|row| row.get(0).map(Hash::from_bytes))
-                    .collect::<Result<HashSet<_>, rusqlite::Error>>()?;
-                if existing_dependencies.len() != dependencies.len()
-                    || dependencies
-                        .iter()
-                        .any(|v| existing_dependencies.contains(v))
-                {
-                    return Err(Error::InvalidBlobDependencies);
-                }
-
                 return Ok(());
             }
 
             let mut stmt =
                 tx.prepare_cached("UPDATE blobs SET hash = ?1, total_len = ?2 WHERE id = ?3")?;
             stmt.execute(rusqlite::params![hash.as_bytes(), total_len, id.0])?;
+        }
+
+        tx.commit()?;
+
+        Ok(())
+    }
+
+    pub fn add_blob_dependencies(&mut self, target: Hash, dependencies: &[Hash]) -> Result<()> {
+        let tx = self.db.transaction()?;
+
+        {
+            let mut stmt = tx.prepare_cached("SELECT id FROM blobs WHERE hash = ?1")?;
+            let id = stmt.query_row([target.as_bytes()], |row| row.get(0).map(BlobId))?;
 
             let mut stmt =
-                tx.prepare_cached("INSERT INTO blob_dependencies (parent_id, child_id) VALUES (?1, (SELECT id FROM blobs WHERE hash = ?2))")?;
+                tx.prepare_cached("INSERT OR IGNORE INTO blob_dependencies VALUES (?1, (SELECT id FROM blobs WHERE hash = ?2))")?;
 
             for dependency in dependencies {
                 stmt.execute(rusqlite::params![id.0, dependency.as_bytes()])?;

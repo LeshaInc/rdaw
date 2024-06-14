@@ -77,6 +77,11 @@ impl Document {
         Ok(writer)
     }
 
+    pub fn add_blob_dependencies(&self, target: Hash, dependencies: &[Hash]) -> Result<()> {
+        let mut db = self.db.lock().unwrap();
+        db.add_blob_dependencies(target, dependencies)
+    }
+
     pub fn open_blob(&self, hash: Hash) -> Result<Option<BlobReader>> {
         let Some((id, blob)) = self.db.lock().unwrap().find_blob(hash)? else {
             return Ok(None);

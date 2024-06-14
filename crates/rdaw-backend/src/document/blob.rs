@@ -78,13 +78,13 @@ impl BlobWriter {
         Ok(())
     }
 
-    pub fn save(mut self, dependencies: &[Hash]) -> io::Result<Hash> {
+    pub fn save(mut self) -> io::Result<Hash> {
         let hash = self.hasher.finalize();
 
         self.flush_chunks(true)?;
 
         let mut db = self.db.lock().unwrap();
-        db.finalize_blob(self.id, hash, self.offset, dependencies)
+        db.finalize_blob(self.id, hash, self.offset)
             .map_err(io::Error::other)?;
 
         self.is_saved = true;
