@@ -2,6 +2,7 @@ use rdaw_core::collections::{HashMap, ImVec};
 use rdaw_core::time::RealTime;
 
 use crate::arrangement::ArrangementId;
+use crate::document::DocumentId;
 use crate::item::ItemId;
 use crate::time::Time;
 use crate::{BackendProtocol, BoxStream, Result};
@@ -22,7 +23,7 @@ pub struct TrackViewId {
 pub trait TrackOperations {
     async fn list_tracks(&self) -> Result<Vec<TrackId>>;
 
-    async fn create_track(&self) -> Result<TrackId>;
+    async fn create_track(&self, document_id: DocumentId) -> Result<TrackId>;
 
     #[sub]
     async fn subscribe_track(&self, id: TrackId) -> Result<BoxStream<TrackEvent>>;

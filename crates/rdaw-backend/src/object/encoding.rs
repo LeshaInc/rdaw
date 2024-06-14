@@ -1,3 +1,4 @@
+use rdaw_api::document::DocumentId;
 use rdaw_core::Uuid;
 
 use super::{Hub, Metadata, Object, ObjectId, ObjectType, StorageRef};
@@ -73,16 +74,22 @@ impl SerializationContext<'_> {
 #[derive(Debug)]
 pub struct DeserializationContext<'a> {
     hub: &'a mut Hub,
+    document_id: DocumentId,
     deps: Vec<(ObjectType, Uuid)>,
 }
 
 impl DeserializationContext<'_> {
-    pub fn deserialize_graph<I: ObjectId>(hub: &mut Hub, root_uuid: Uuid) -> Result<I, Error>
+    pub fn deserialize_graph<I: ObjectId>(
+        hub: &mut Hub,
+        document_id: DocumentId,
+        root_uuid: Uuid,
+    ) -> Result<I, Error>
     where
         I::Object: StorageRef,
     {
         let mut ctx = DeserializationContext {
             hub,
+            document_id,
             deps: Vec::new(),
         };
 
@@ -103,7 +110,10 @@ impl DeserializationContext<'_> {
             return Ok(id);
         }
 
-        let metadata = Metadata { uuid };
+        let metadata = Metadata {
+            uuid,
+            document_id: self.document_id,
+        };
         let id = storage.prepare_insert(metadata);
 
         Ok(id)

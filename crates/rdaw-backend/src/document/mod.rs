@@ -2,6 +2,7 @@ mod blob;
 mod compression;
 mod database;
 pub mod encoding;
+mod ops;
 #[cfg(test)]
 mod tests;
 

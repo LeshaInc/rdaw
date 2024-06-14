@@ -14,13 +14,24 @@ use futures::executor::{block_on, ThreadPool};
 use futures::task::SpawnExt;
 use futures::StreamExt;
 use rdaw_api::arrangement::ArrangementId;
-use rdaw_api::{Backend, BoxStream};
+use rdaw_api::document::DocumentId;
+use rdaw_api::{Backend, BoxStream, Error};
 use rdaw_ui_kit::Theme;
 
-pub fn app_view(main_arrangement: ArrangementId) -> impl IntoView {
+pub fn app_view(document_id: DocumentId, main_arrangement: ArrangementId) -> impl IntoView {
+    provide_document_id(document_id);
+
     views::arrangement(main_arrangement)
         .style(|s| s.width_full().height_full())
         .window_scale(move || 1.0)
+}
+
+pub fn get_document_id() -> DocumentId {
+    use_context().expect("no document id in scope")
+}
+
+pub fn provide_document_id(id: DocumentId) {
+    provide_context(id);
 }
 
 pub fn spawn<T: Send + 'static>(
@@ -88,10 +99,15 @@ pub fn run(backend: Arc<dyn Backend>) {
 
     Theme::light().provide();
 
-    let main_arrangement = block_on(async move { backend.create_arrangement().await }).unwrap();
+    let (document_id, main_arrangement) = block_on(async move {
+        let document_id = backend.create_document().await?;
+        let main_arrangement = backend.create_arrangement(document_id).await?;
+        Ok::<_, Error>((document_id, main_arrangement))
+    })
+    .unwrap();
 
     floem::launch(move || {
-        let view = app_view(main_arrangement)
+        let view = app_view(document_id, main_arrangement)
             .keyboard_navigatable()
             .into_view();
         let id = view.id();

@@ -24,6 +24,7 @@ pub trait Backend:
     self::arrangement::ArrangementOperations
     + self::source::AudioSourceOperations
     + self::blob::BlobOperations
+    + self::document::DocumentOperations
     + self::track::TrackOperations
     + Sync
     + 'static
@@ -34,6 +35,7 @@ impl<T> Backend for T where
     T: self::arrangement::ArrangementOperations
         + self::source::AudioSourceOperations
         + self::blob::BlobOperations
+        + self::document::DocumentOperations
         + self::track::TrackOperations
         + Sync
         + 'static
@@ -47,6 +49,7 @@ pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
         self::arrangement::ArrangementOperations,
         self::source::AudioSourceOperations,
         self::blob::BlobOperations,
+        self::document::DocumentOperations,
         self::track::TrackOperations
     ),
     error = Error

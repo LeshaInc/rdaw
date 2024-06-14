@@ -5,9 +5,10 @@ use floem::IntoView;
 use rdaw_api::track::{TrackEvent, TrackId};
 use rdaw_ui_kit::{button, ColorKind, Level};
 
-use crate::{api, stream_for_each};
+use crate::{api, get_document_id, stream_for_each};
 
 pub fn track_control(id: TrackId) -> impl IntoView {
+    let document_id = get_document_id();
     let name = RwSignal::new(String::new());
     let editor_name = RwSignal::new(String::new());
 
@@ -52,7 +53,7 @@ pub fn track_control(id: TrackId) -> impl IntoView {
     let add_child = move |_ev: &Event| {
         api::call(
             move |api| async move {
-                let child_id = api.create_track().await?;
+                let child_id = api.create_track(document_id).await?;
                 api.append_track_child(id, child_id).await
             },
             drop,

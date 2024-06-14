@@ -1,6 +1,7 @@
 use rdaw_api::arrangement::{
     ArrangementEvent, ArrangementId, ArrangementOperations, ArrangementRequest, ArrangementResponse,
 };
+use rdaw_api::document::DocumentId;
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::track::TrackId;
 use rdaw_api::{BackendProtocol, Error, Result};
@@ -25,12 +26,18 @@ impl Backend {
 
     #[instrument(skip_all, err)]
     #[handler]
-    pub fn create_arrangement(&mut self) -> Result<ArrangementId> {
+    pub fn create_arrangement(&mut self, document_id: DocumentId) -> Result<ArrangementId> {
         let tempo_map = TempoMap::new(120.0);
-        let tempo_map_id = self.hub.tempo_maps.insert(Metadata::new(), tempo_map);
+        let tempo_map_id = self
+            .hub
+            .tempo_maps
+            .insert(Metadata::new(document_id), tempo_map);
 
         let main_track = Track::new("Main Track".into());
-        let main_track_id = self.hub.tracks.insert(Metadata::new(), main_track);
+        let main_track_id = self
+            .hub
+            .tracks
+            .insert(Metadata::new(document_id), main_track);
 
         let arrangement = Arrangement {
             tempo_map_id,
@@ -38,7 +45,10 @@ impl Backend {
             name: String::new(),
         };
 
-        let arrangement_id = self.hub.arrangements.insert(Metadata::new(), arrangement);
+        let arrangement_id = self
+            .hub
+            .arrangements
+            .insert(Metadata::new(document_id), arrangement);
 
         let mut id_str = format!("{:?}", arrangement_id.data());
         if let Some(v) = id_str.find('v') {

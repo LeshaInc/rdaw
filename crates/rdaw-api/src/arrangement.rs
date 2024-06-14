@@ -1,3 +1,4 @@
+use crate::document::DocumentId;
 use crate::tempo_map::TempoMapId;
 use crate::track::TrackId;
 use crate::{BackendProtocol, BoxStream, Result};
@@ -10,7 +11,7 @@ slotmap::new_key_type! {
 pub trait ArrangementOperations {
     async fn list_arrangements(&self) -> Result<Vec<ArrangementId>>;
 
-    async fn create_arrangement(&self) -> Result<ArrangementId>;
+    async fn create_arrangement(&self, document_id: DocumentId) -> Result<ArrangementId>;
 
     #[sub]
     async fn subscribe_arrangement(&self, id: ArrangementId)

@@ -72,6 +72,10 @@ impl Backend {
                         self.handle_blob_request(self.transport.clone(), id, req)
                             .await?
                     }
+                    BackendRequest::Document(req) => {
+                        self.handle_document_request(self.transport.clone(), id, req)
+                            .await?
+                    }
                     BackendRequest::Track(req) => {
                         self.handle_track_request(self.transport.clone(), id, req)
                             .await?

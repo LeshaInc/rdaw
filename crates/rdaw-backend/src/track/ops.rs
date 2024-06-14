@@ -1,3 +1,4 @@
+use rdaw_api::document::DocumentId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
@@ -23,9 +24,9 @@ impl Backend {
 
     #[instrument(skip_all, err)]
     #[handler]
-    pub fn create_track(&mut self) -> Result<TrackId> {
+    pub fn create_track(&mut self, document_id: DocumentId) -> Result<TrackId> {
         let track = Track::new(String::new());
-        let id = self.hub.tracks.insert(Metadata::new(), track);
+        let id = self.hub.tracks.insert(Metadata::new(document_id), track);
 
         let mut id_str = format!("{:?}", id.data());
         if let Some(v) = id_str.find('v') {
