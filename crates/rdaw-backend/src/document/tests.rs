@@ -1,9 +1,11 @@
 use std::io::{Read, Write};
 
 use chrono::Utc;
+use rdaw_core::Uuid;
 use tempfile::NamedTempFile;
 
 use super::{Compression, Document, Result, Revision, RevisionId};
+use crate::document::ObjectRevision;
 
 #[test]
 fn new() -> Result<()> {
@@ -13,7 +15,7 @@ fn new() -> Result<()> {
 
 #[test]
 fn save() -> Result<()> {
-    let mut doc = Document::new()?;
+    let doc = Document::new()?;
 
     let revision = Revision {
         created_at: Utc::now(),
@@ -45,7 +47,7 @@ fn save_as() -> Result<()> {
 
 #[test]
 fn revisions() -> Result<()> {
-    let mut doc = Document::new()?;
+    let doc = Document::new()?;
 
     let revision_1 = Revision {
         created_at: Utc::now(),
@@ -125,6 +127,49 @@ fn create_blob_with_deps() -> Result<()> {
     doc.remove_blob(blob_uses_1)?;
     doc.remove_blob(blob1)?;
     doc.remove_blob(blob2)?;
+
+    Ok(())
+}
+
+#[test]
+fn write_object() -> Result<()> {
+    let doc = Document::new()?;
+
+    let mut writer = doc.create_blob(Compression::None)?;
+    writer.write_all(&[1])?;
+    let hash = writer.save(&[])?;
+
+    let uuid = Uuid::new_v4();
+    doc.write_object(uuid, hash)?;
+
+    assert_eq!(
+        doc.read_object(uuid)?,
+        Some(ObjectRevision {
+            uuid,
+            revision_id: RevisionId(0),
+            hash
+        })
+    );
+
+    doc.save(Revision {
+        created_at: Utc::now(),
+        time_spent_secs: 1,
+    })?;
+
+    let mut writer = doc.create_blob(Compression::None)?;
+    writer.write_all(&[2])?;
+    let hash = writer.save(&[])?;
+
+    doc.write_object(uuid, hash)?;
+
+    assert_eq!(
+        doc.read_object(uuid)?,
+        Some(ObjectRevision {
+            uuid,
+            revision_id: RevisionId(1),
+            hash
+        })
+    );
 
     Ok(())
 }

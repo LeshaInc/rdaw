@@ -46,7 +46,7 @@ impl Document {
         self.path.as_deref()
     }
 
-    pub fn save(&mut self, revision: Revision) -> Result<()> {
+    pub fn save(&self, revision: Revision) -> Result<()> {
         let mut db = self.db.lock().unwrap();
         db.save(revision)?;
         Ok(())
@@ -89,6 +89,16 @@ impl Document {
     pub fn remove_blob(&self, hash: Hash) -> Result<()> {
         let db = self.db.lock().unwrap();
         db.remove_blob(hash)
+    }
+
+    pub fn write_object(&self, uuid: Uuid, hash: Hash) -> Result<()> {
+        let mut db = self.db.lock().unwrap();
+        db.write_object(uuid, hash)
+    }
+
+    pub fn read_object(&self, uuid: Uuid) -> Result<Option<ObjectRevision>> {
+        let db = self.db.lock().unwrap();
+        db.read_object(uuid)
     }
 }
 
@@ -134,7 +144,7 @@ pub struct Revision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Object {
+pub struct ObjectRevision {
     pub uuid: Uuid,
     pub revision_id: RevisionId,
     pub hash: Hash,

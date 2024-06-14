@@ -2,10 +2,13 @@ use std::path::Path;
 
 use blake3::Hash;
 use rdaw_core::collections::HashSet;
+use rdaw_core::Uuid;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
 
-use super::{Blob, BlobChunk, BlobId, Compression, Error, Result, Revision, RevisionId};
+use super::{
+    Blob, BlobChunk, BlobId, Compression, Error, ObjectRevision, Result, Revision, RevisionId,
+};
 use crate::define_version_enum;
 
 define_version_enum! {
@@ -118,7 +121,7 @@ impl Database {
 
             CREATE TABLE objects (
                 uuid BLOB NOT NULL,
-                revision_id INTEGER NOT NULL REFERENCES revisions (id),
+                revision_id INTEGER NOT NULL,
                 blob_id INTEGER NOT NULL REFERENCES blobs (id),
                 PRIMARY KEY (uuid, revision_id)
             );
@@ -360,6 +363,50 @@ impl Database {
                 };
 
                 Ok(Some(chunk))
+            })
+    }
+
+    pub fn write_object(&mut self, uuid: Uuid, hash: Hash) -> Result<()> {
+        let tx = self.db.transaction()?;
+
+        {
+            let mut stmt = tx.prepare_cached("SELECT id FROM blobs WHERE hash = ?1")?;
+            let blob_id = stmt.query_row([hash.as_bytes()], |row| row.get(0).map(BlobId))?;
+
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO objects (uuid, revision_id, blob_id) VALUES (?1, ?2, ?3)",
+            )?;
+            stmt.execute(rusqlite::params![uuid, self.next_revision.0, blob_id.0])?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn read_object(&self, uuid: Uuid) -> Result<Option<ObjectRevision>> {
+        let mut stmt = self.db.prepare_cached(
+            "
+            SELECT o.revision_id, b.hash
+            FROM objects o
+            JOIN blobs b ON b.id = o.blob_id
+            WHERE o.uuid = ?1
+            ORDER BY o.revision_id DESC
+            LIMIT 1
+            ",
+        )?;
+
+        stmt.query([uuid])
+            .map_err(Error::from)
+            .and_then(|mut rows| {
+                let Some(row) = rows.next()? else {
+                    return Ok(None);
+                };
+
+                Ok(Some(ObjectRevision {
+                    uuid,
+                    revision_id: RevisionId(row.get(0)?),
+                    hash: Hash::from_bytes(row.get(1)?),
+                }))
             })
     }
 }
