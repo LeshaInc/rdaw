@@ -15,7 +15,7 @@ pub struct BlobId(pub i64);
 #[derive(Debug)]
 pub struct Blob {
     pub hash: Option<Hash>,
-    pub total_len: Option<u64>,
+    pub total_len: u64,
     pub compression: Compression,
 }
 
@@ -78,22 +78,18 @@ impl BlobWriter {
         Ok(())
     }
 
-    fn save_inner(&mut self) -> io::Result<Hash> {
+    pub fn save(mut self, dependencies: &[Hash]) -> io::Result<Hash> {
         let hash = self.hasher.finalize();
 
         self.flush_chunks(true)?;
 
-        let db = self.db.lock().unwrap();
-        db.finalize_blob(self.id, hash, self.offset)
+        let mut db = self.db.lock().unwrap();
+        db.finalize_blob(self.id, hash, self.offset, dependencies)
             .map_err(io::Error::other)?;
 
         self.is_saved = true;
 
         Ok(hash)
-    }
-
-    pub fn save(mut self) -> io::Result<Hash> {
-        self.save_inner()
     }
 }
 
@@ -160,7 +156,7 @@ impl io::Read for BlobReader {
 
         buf = &mut buf[existing..];
 
-        if buf.is_empty() || self.blob.total_len.is_some_and(|v| self.offset >= v) {
+        if buf.is_empty() || self.offset >= self.blob.total_len {
             return Ok(existing);
         }
 

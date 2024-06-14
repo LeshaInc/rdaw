@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use blake3::Hash;
 use chrono::{DateTime, Utc};
+use rdaw_core::Uuid;
 
 use self::blob::{Blob, BlobChunk, BlobId};
 pub use self::blob::{BlobReader, BlobWriter};
@@ -45,15 +46,15 @@ impl Document {
         self.path.as_deref()
     }
 
-    pub fn save(&self, revision: Revision) -> Result<()> {
-        let db = self.db.lock().unwrap();
-        db.save(revision)
+    pub fn save(&mut self, revision: Revision) -> Result<()> {
+        let mut db = self.db.lock().unwrap();
+        db.save(revision)?;
+        Ok(())
     }
 
-    pub fn save_copy(&self, path: &Path, revision: Revision) -> Result<Document> {
+    pub fn save_as(&self, path: &Path, revision: Revision) -> Result<Document> {
         let db = self.db.lock().unwrap();
-        let new_db = db.save_copy(path, revision)?;
-
+        let new_db = db.save_as(path, revision)?;
         Ok(Document {
             db: Arc::new(Mutex::new(new_db)),
             path: Some(path.into()),
@@ -66,9 +67,9 @@ impl Document {
     }
 
     pub fn create_blob(&self, compression: Compression) -> Result<BlobWriter> {
-        let id = self.db.lock().unwrap().write_blob(Blob {
+        let id = self.db.lock().unwrap().create_blob(Blob {
             hash: None,
-            total_len: None,
+            total_len: 0,
             compression,
         })?;
 
@@ -101,6 +102,8 @@ pub enum Error {
     UnsupportedVersion,
     #[error("invalid document")]
     InvalidDocument,
+    #[error("invalid blob dependencies")]
+    InvalidBlobDependencies,
     #[error("invalid utf8")]
     InvalidUtf8,
     #[error("serialization failed")]
@@ -128,4 +131,11 @@ pub struct RevisionId(pub u64);
 pub struct Revision {
     pub created_at: DateTime<Utc>,
     pub time_spent_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Object {
+    pub uuid: Uuid,
+    pub revision_id: RevisionId,
+    pub hash: Hash,
 }

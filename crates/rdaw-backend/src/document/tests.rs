@@ -13,7 +13,7 @@ fn new() -> Result<()> {
 
 #[test]
 fn save() -> Result<()> {
-    let doc = Document::new()?;
+    let mut doc = Document::new()?;
 
     let revision = Revision {
         created_at: Utc::now(),
@@ -26,7 +26,7 @@ fn save() -> Result<()> {
 }
 
 #[test]
-fn save_copy() -> Result<()> {
+fn save_as() -> Result<()> {
     let orig = Document::new()?;
 
     let revision = Revision {
@@ -35,7 +35,7 @@ fn save_copy() -> Result<()> {
     };
 
     let copy_path = NamedTempFile::with_prefix(".rdaw-test-")?.into_temp_path();
-    orig.save_copy(&copy_path, revision)?;
+    orig.save_as(&copy_path, revision)?;
 
     let copy = Document::open(&copy_path)?;
     assert_eq!(copy.revisions()?, vec![(RevisionId(1), revision)]);
@@ -45,7 +45,7 @@ fn save_copy() -> Result<()> {
 
 #[test]
 fn revisions() -> Result<()> {
-    let doc = Document::new()?;
+    let mut doc = Document::new()?;
 
     let revision_1 = Revision {
         created_at: Utc::now(),
@@ -86,7 +86,7 @@ fn create_blob() -> Result<()> {
         for data in &data_examples {
             let mut writer = doc.create_blob(compression)?;
             writer.write_all(&data)?;
-            let hash = writer.save()?;
+            let hash = writer.save(&[])?;
 
             let mut reader = doc.open_blob(hash)?.unwrap();
             let mut buf = Vec::new();
@@ -96,6 +96,35 @@ fn create_blob() -> Result<()> {
             doc.remove_blob(hash)?;
         }
     }
+
+    Ok(())
+}
+
+#[test]
+fn create_blob_with_deps() -> Result<()> {
+    let doc = Document::new()?;
+
+    let mut writer = doc.create_blob(Compression::None)?;
+    writer.write_all(&[1])?;
+    let blob1 = writer.save(&[])?;
+
+    let mut writer = doc.create_blob(Compression::None)?;
+    writer.write_all(&[2])?;
+    let blob2 = writer.save(&[])?;
+
+    let mut writer = doc.create_blob(Compression::None)?;
+    writer.write_all(&[1, 2])?;
+    let blob_uses_1 = writer.save(&[blob1])?;
+
+    let mut writer = doc.create_blob(Compression::None)?;
+    writer.write_all(&[1, 2])?;
+    assert!(writer.save(&[blob1, blob2]).is_err());
+
+    assert!(doc.remove_blob(blob1).is_err());
+
+    doc.remove_blob(blob_uses_1)?;
+    doc.remove_blob(blob1)?;
+    doc.remove_blob(blob2)?;
 
     Ok(())
 }

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use blake3::Hash;
+use rdaw_core::collections::HashSet;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
 
@@ -17,6 +18,7 @@ define_version_enum! {
 pub struct Database {
     db: Connection,
     _temp_path: Option<TempPath>,
+    next_revision: RevisionId,
 }
 
 impl Database {
@@ -31,6 +33,7 @@ impl Database {
                     | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?,
             _temp_path: Some(temp_path),
+            next_revision: RevisionId(0),
         };
 
         db.configure()?;
@@ -46,6 +49,7 @@ impl Database {
                 OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?,
             _temp_path: None,
+            next_revision: RevisionId(0),
         };
 
         db.configure()?;
@@ -55,12 +59,15 @@ impl Database {
             return Err(Error::InvalidDocument);
         }
 
+        db.next_revision = db.read_next_revision()?;
+
         Ok(db)
     }
 
     fn configure(&mut self) -> Result<()> {
         self.db.execute_batch(
             "
+            PRAGMA foreign_keys = ON;
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA locking_mode = EXCLUSIVE;
@@ -80,24 +87,43 @@ impl Database {
             "
             CREATE TABLE revisions (
                 id INTEGER PRIMARY KEY ASC,
-                created_at TEXT,
-                time_spent INTEGER
+                created_at TEXT NOT NULL,
+                time_spent INTEGER NOT NULL
             );
 
             CREATE TABLE blobs (
                 id INTEGER PRIMARY KEY ASC,
                 hash BLOB,
-                total_len INTEGER,
-                compression INTEGER
+                total_len INTEGER NOT NULL,
+                compression INTEGER NOT NULL
             );
 
+            CREATE UNIQUE INDEX blobs_hash_idx ON blobs (hash) WHERE hash IS NOT NULL;
 
             CREATE TABLE blob_chunks (
-                blob_id INTEGER REFERENCES blobs(id) ON DELETE CASCADE,
-                offset INTEGER,
-                len INTEGER,
-                data BLOB
+                blob_id INTEGER REFERENCES blobs (id) ON DELETE CASCADE,
+                offset INTEGER NOT NULL,
+                len INTEGER NOT NULL,
+                data BLOB NOT NULL,
+                PRIMARY KEY (blob_id, offset)
             );
+
+            CREATE TABLE blob_dependencies (
+                parent_id INTEGER NOT NULL REFERENCES blobs (id) ON DELETE CASCADE,
+                child_id INTEGER NOT NULL REFERENCES blobs (id),
+                PRIMARY KEY (parent_id, child_id)
+            );
+
+            CREATE INDEX blob_dependencies_parent_idx ON blob_dependencies (parent_id);
+
+            CREATE TABLE objects (
+                uuid BLOB NOT NULL,
+                revision_id INTEGER NOT NULL REFERENCES revisions (id),
+                blob_id INTEGER NOT NULL REFERENCES blobs (id),
+                PRIMARY KEY (uuid, revision_id)
+            );
+
+            CREATE INDEX objects_blob_idx ON objects (blob_id);
             ",
         )?;
         Ok(())
@@ -121,13 +147,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn save(&self, revision: Revision) -> Result<()> {
-        self.add_revision(revision)?;
+    pub fn save(&mut self, revision: Revision) -> Result<()> {
+        self.save_revision(revision)?;
         self.db.execute_batch("PRAGMA wal_checkpoint(FULL)")?;
         Ok(())
     }
 
-    pub fn save_copy(&self, path: &Path, revision: Revision) -> Result<Database> {
+    pub fn save_as(&self, path: &Path, revision: Revision) -> Result<Database> {
         let target_dir = path
             .parent()
             .map(|v| v.to_owned())
@@ -140,8 +166,8 @@ impl Database {
         let temp_path_str = temp_file.path().to_str().ok_or(Error::InvalidUtf8)?;
         self.db.execute("VACUUM INTO ?1", [temp_path_str])?;
 
-        let new_db = Database::open(temp_file.path())?;
-        new_db.add_revision(revision)?;
+        let mut new_db = Database::open(temp_file.path())?;
+        new_db.save(revision)?;
         drop(new_db);
 
         temp_file.persist(path).map_err(|e| Error::from(e.error))?;
@@ -166,7 +192,17 @@ impl Database {
         iter.collect()
     }
 
-    fn add_revision(&self, revision: Revision) -> Result<()> {
+    pub fn next_revision(&self) -> RevisionId {
+        self.next_revision
+    }
+
+    fn read_next_revision(&self) -> Result<RevisionId> {
+        let mut stmt = self.db.prepare_cached("SELECT COUNT(*) FROM revisions")?;
+        let id = stmt.query_row([], |row| row.get(0).map(RevisionId))?;
+        Ok(id)
+    }
+
+    fn save_revision(&mut self, revision: Revision) -> Result<()> {
         let mut stmt = self
             .db
             .prepare_cached("INSERT INTO revisions (created_at, time_spent) VALUES (?1, ?2)")?;
@@ -176,10 +212,12 @@ impl Database {
             revision.time_spent_secs
         ])?;
 
+        self.next_revision.0 += 1;
+
         Ok(())
     }
 
-    pub fn write_blob(&self, blob: Blob) -> Result<BlobId> {
+    pub fn create_blob(&self, blob: Blob) -> Result<BlobId> {
         let mut stmt = self.db.prepare_cached(
             "INSERT INTO blobs (hash, total_len, compression) VALUES (?1, ?2, ?3) RETURNING id",
         )?;
@@ -194,12 +232,50 @@ impl Database {
         Ok(id)
     }
 
-    pub fn finalize_blob(&self, id: BlobId, hash: Hash, total_len: u64) -> Result<()> {
-        let mut stmt = self
-            .db
-            .prepare_cached("UPDATE blobs SET hash = ?1, total_len = ?2 WHERE id = ?3")?;
+    pub fn finalize_blob(
+        &mut self,
+        id: BlobId,
+        hash: Hash,
+        total_len: u64,
+        dependencies: &[Hash],
+    ) -> Result<()> {
+        let tx = self.db.transaction()?;
 
-        stmt.execute(rusqlite::params![hash.as_bytes(), total_len, id.0])?;
+        {
+            let mut stmt = tx.prepare_cached("SELECT COUNT(*) FROM blobs WHERE hash = ?1")?;
+            let exists = stmt.query_row([hash.as_bytes()], |row| row.get::<_, usize>(0))? > 0;
+
+            if exists {
+                let mut stmt =
+                    tx.prepare_cached("SELECT b1.hash FROM blobs b1 JOIN blob_dependencies bd ON b1.id = bd.child_id WHERE bd.parent_id = ?1")?;
+                let existing_dependencies = stmt
+                    .query([id.0])?
+                    .mapped(|row| row.get(0).map(Hash::from_bytes))
+                    .collect::<Result<HashSet<_>, rusqlite::Error>>()?;
+                if existing_dependencies.len() != dependencies.len()
+                    || dependencies
+                        .iter()
+                        .any(|v| existing_dependencies.contains(v))
+                {
+                    return Err(Error::InvalidBlobDependencies);
+                }
+
+                return Ok(());
+            }
+
+            let mut stmt =
+                tx.prepare_cached("UPDATE blobs SET hash = ?1, total_len = ?2 WHERE id = ?3")?;
+            stmt.execute(rusqlite::params![hash.as_bytes(), total_len, id.0])?;
+
+            let mut stmt =
+                tx.prepare_cached("INSERT INTO blob_dependencies (parent_id, child_id) VALUES (?1, (SELECT id FROM blobs WHERE hash = ?2))")?;
+
+            for dependency in dependencies {
+                stmt.execute(rusqlite::params![id.0, dependency.as_bytes()])?;
+            }
+        }
+
+        tx.commit()?;
 
         Ok(())
     }
