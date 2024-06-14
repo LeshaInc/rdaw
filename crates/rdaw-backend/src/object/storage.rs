@@ -1,5 +1,6 @@
 use std::ops::{Index, IndexMut};
 
+use rdaw_core::collections::HashSet;
 use slotmap::SlotMap;
 
 use super::{Metadata, Object};
@@ -7,6 +8,7 @@ use super::{Metadata, Object};
 #[derive(Debug)]
 pub struct Storage<T: Object> {
     map: SlotMap<T::Id, Entry<T>>,
+    dirty_set: HashSet<T::Id>,
 }
 
 #[derive(Debug)]
@@ -19,6 +21,7 @@ impl<T: Object> Storage<T> {
     pub fn new() -> Storage<T> {
         Storage {
             map: SlotMap::default(),
+            dirty_set: HashSet::default(),
         }
     }
 
@@ -31,13 +34,18 @@ impl<T: Object> Storage<T> {
 
     pub fn finish_insert(&mut self, id: T::Id, object: T) {
         self.map[id].object = Some(object);
+        self.dirty_set.insert(id);
     }
 
     pub fn insert(&mut self, metadata: Metadata, object: T) -> T::Id {
-        self.map.insert(Entry {
+        let id = self.map.insert(Entry {
             metadata,
             object: Some(object),
-        })
+        });
+
+        self.dirty_set.insert(id);
+
+        id
     }
 
     pub fn has(&self, id: T::Id) -> bool {
@@ -65,6 +73,20 @@ impl<T: Object> Storage<T> {
         self.map
             .iter()
             .flat_map(|(id, entry)| entry.object.as_ref().map(|obj| (id, &entry.metadata, obj)))
+    }
+
+    pub fn mark_dirty(&mut self, id: T::Id) {
+        if self.has(id) {
+            self.dirty_set.insert(id);
+        }
+    }
+
+    pub fn clear_dirty(&mut self, id: T::Id) {
+        self.dirty_set.remove(&id);
+    }
+
+    pub fn iter_dirty(&self) -> impl Iterator<Item = T::Id> + '_ {
+        self.dirty_set.iter().copied()
     }
 }
 
