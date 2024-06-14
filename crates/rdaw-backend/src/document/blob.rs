@@ -106,6 +106,7 @@ impl io::Write for BlobWriter {
     }
 
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        #[allow(clippy::unused_io_amount)]
         self.write(buf)?;
         Ok(())
     }
