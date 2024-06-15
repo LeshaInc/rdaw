@@ -1,14 +1,12 @@
 use std::path::Path;
 
 use blake3::Hash;
+use rdaw_api::{Error as ApiError, ErrorKind};
 use rdaw_core::Uuid;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
 
-use super::{
-    Blob, BlobChunk, BlobId, Compression, DocumentRevision, Error, ObjectRevision, Result,
-    RevisionId,
-};
+use super::{Blob, BlobChunk, BlobId, Compression, DocumentRevision, ObjectRevision, RevisionId};
 use crate::define_version_enum;
 
 define_version_enum! {
@@ -57,9 +55,12 @@ impl Database {
 
         db.configure()?;
 
-        let version = db.read_version()?;
-        if version != Some(Version::V1) {
-            return Err(Error::InvalidDocument);
+        let Some(version) = db.read_version()? else {
+            return Err(ApiError::new(ErrorKind::Deserialization, "version field missing").into());
+        };
+
+        match version {
+            Version::V1 => {}
         }
 
         db.next_revision = db.read_next_revision()?;
@@ -141,7 +142,8 @@ impl Database {
             return Ok(None);
         }
 
-        Version::from_u32(version).map(Some)
+        let version = Version::from_u32(version)?;
+        Ok(Some(version))
     }
 
     fn write_version(&self, version: Version) -> Result<()> {
@@ -166,7 +168,10 @@ impl Database {
             .prefix(".rdaw-temp-")
             .tempfile_in(target_dir)?;
 
-        let temp_path_str = temp_file.path().to_str().ok_or(Error::InvalidUtf8)?;
+        let temp_path_str = temp_file.path().to_str().ok_or_else(|| {
+            ApiError::new(ErrorKind::InvalidUtf8, "invalid utf-8 in document path")
+        })?;
+
         self.db.execute("VACUUM INTO ?1", [temp_path_str])?;
 
         let mut new_db = Database::open(temp_file.path())?;
@@ -293,8 +298,9 @@ impl Database {
                 let blob = Blob {
                     hash: Some(hash),
                     total_len: row.get(1)?,
-                    compression: Compression::from_u8(row.get(2)?)
-                        .ok_or(Error::InvalidCompressionType)?,
+                    compression: Compression::from_u8(row.get(2)?).ok_or_else(|| {
+                        ApiError::new(ErrorKind::Deserialization, "invalid compression type")
+                    })?,
                 };
 
                 Ok(Some((id, blob)))
@@ -401,5 +407,27 @@ impl Database {
                     hash: Hash::from_bytes(row.get(1)?),
                 }))
             })
+    }
+}
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Sql(#[from] rusqlite::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Api(#[from] ApiError),
+}
+
+impl From<Error> for ApiError {
+    fn from(value: Error) -> Self {
+        match value {
+            Error::Sql(v) => ApiError::new(ErrorKind::Sql, v),
+            Error::Io(v) => v.into(),
+            Error::Api(v) => v,
+        }
     }
 }

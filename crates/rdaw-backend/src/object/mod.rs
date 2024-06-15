@@ -3,12 +3,12 @@ mod hub;
 mod storage;
 
 use rdaw_api::document::DocumentId;
+use rdaw_api::Result;
 pub use rdaw_core::Uuid;
 
 pub use self::encoding::{DeserializationContext, SerializationContext};
 pub use self::hub::{Hub, StorageRef, SubscribersHub};
 pub use self::storage::Storage;
-use crate::document;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjectType {
@@ -25,12 +25,9 @@ pub trait Object: Sized {
 
     const TYPE: ObjectType;
 
-    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error>;
+    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>>;
 
-    fn deserialize(
-        ctx: &mut DeserializationContext<'_>,
-        data: &[u8],
-    ) -> Result<Self, document::Error>;
+    fn deserialize(ctx: &mut DeserializationContext<'_>, data: &[u8]) -> Result<Self>;
 }
 
 pub trait ObjectId: slotmap::Key {

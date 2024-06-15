@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use blake3::Hash;
 use chrono::{DateTime, Utc};
+use rdaw_api::Result;
 use rdaw_core::Uuid;
 
 use self::blob::{Blob, BlobChunk, BlobId};
@@ -64,7 +65,8 @@ impl Document {
 
     pub fn revisions(&self) -> Result<Vec<(RevisionId, DocumentRevision)>> {
         let db = self.db.lock().unwrap();
-        db.revisions()
+        let revisions = db.revisions()?;
+        Ok(revisions)
     }
 
     pub fn create_blob(&self, compression: Compression) -> Result<BlobWriter> {
@@ -80,7 +82,8 @@ impl Document {
 
     pub fn add_blob_dependencies(&self, target: Hash, dependencies: &[Hash]) -> Result<()> {
         let mut db = self.db.lock().unwrap();
-        db.add_blob_dependencies(target, dependencies)
+        db.add_blob_dependencies(target, dependencies)?;
+        Ok(())
     }
 
     pub fn open_blob(&self, hash: Hash) -> Result<Option<BlobReader>> {
@@ -94,55 +97,22 @@ impl Document {
 
     pub fn remove_blob(&self, hash: Hash) -> Result<()> {
         let db = self.db.lock().unwrap();
-        db.remove_blob(hash)
+        db.remove_blob(hash)?;
+        Ok(())
     }
 
     pub fn write_object(&self, uuid: Uuid, hash: Hash) -> Result<()> {
         let mut db = self.db.lock().unwrap();
-        db.write_object(uuid, hash)
+        db.write_object(uuid, hash)?;
+        Ok(())
     }
 
     pub fn read_object(&self, uuid: Uuid) -> Result<Option<ObjectRevision>> {
         let db = self.db.lock().unwrap();
-        db.read_object(uuid)
+        let obj = db.read_object(uuid)?;
+        Ok(obj)
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("invalid id")]
-    InvalidId,
-    #[error("invalid uuid")]
-    InvalidUuid,
-    #[error("invalid datetime")]
-    InvalidDateTime,
-    #[error("invalid compression type")]
-    InvalidCompressionType,
-    #[error("unsupported version")]
-    UnsupportedVersion,
-    #[error("invalid document")]
-    InvalidDocument,
-    #[error("invalid blob dependencies")]
-    InvalidBlobDependencies,
-    #[error("invalid utf8")]
-    InvalidUtf8,
-    #[error("serialization failed")]
-    SerializationFailed,
-    #[error("database error: {error}")]
-    Database {
-        #[source]
-        #[from]
-        error: rusqlite::Error,
-    },
-    #[error("io error: {error}")]
-    Io {
-        #[source]
-        #[from]
-        error: std::io::Error,
-    },
-}
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct RevisionId(pub u64);

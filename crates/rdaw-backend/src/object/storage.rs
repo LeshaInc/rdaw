@@ -5,7 +5,7 @@ use rdaw_core::collections::{HashMap, HashSet};
 use rdaw_core::Uuid;
 use slotmap::SlotMap;
 
-use super::{Metadata, Object};
+use super::{Metadata, Object, ObjectId};
 
 #[derive(Debug)]
 pub struct Storage<T: Object> {
@@ -66,10 +66,7 @@ impl<T: Object> Storage<T> {
         if self.has(id) {
             Ok(())
         } else {
-            Err(Error::new(
-                ErrorKind::InvalidId,
-                format!("{id:?} doesn't exist"),
-            ))
+            Err(err_invalid_id(id))
         }
     }
 
@@ -81,10 +78,7 @@ impl<T: Object> Storage<T> {
     pub fn get_or_err(&self, id: T::Id) -> Result<&T> {
         match self.get(id) {
             Some(v) => Ok(v),
-            None => Err(Error::new(
-                ErrorKind::InvalidId,
-                format!("{id:?} doesn't exist"),
-            )),
+            None => Err(err_invalid_id(id)),
         }
     }
 
@@ -96,10 +90,7 @@ impl<T: Object> Storage<T> {
     pub fn get_mut_or_err(&mut self, id: T::Id) -> Result<&mut T> {
         match self.get_mut(id) {
             Some(v) => Ok(v),
-            None => Err(Error::new(
-                ErrorKind::InvalidId,
-                format!("{id:?} doesn't exist"),
-            )),
+            None => Err(err_invalid_id(id)),
         }
     }
 
@@ -121,18 +112,37 @@ impl<T: Object> Storage<T> {
             self.ensure_has(id)?;
         }
 
-        self.map
-            .get_disjoint_mut(ids)
-            .ok_or_else(|| Error::new(ErrorKind::Other, "duplicate ids in get_disjoint_mut"))
-            .map(|arr| arr.map(|v| v.object.as_mut().unwrap()))
+        match self.map.get_disjoint_mut(ids) {
+            Some(arr) => Ok(arr.map(|v| v.object.as_mut().unwrap())),
+            None => Err(Error::new(
+                ErrorKind::Other,
+                "duplicate ids in get_disjoint_mut",
+            )),
+        }
     }
 
     pub fn get_metadata(&self, id: T::Id) -> Option<&Metadata> {
         self.map.get(id).map(|v| &v.metadata)
     }
 
+    #[track_caller]
+    pub fn get_metadata_or_err(&self, id: T::Id) -> Result<&Metadata> {
+        match self.map.get(id).map(|v| &v.metadata) {
+            Some(v) => Ok(v),
+            None => Err(err_invalid_id(id)),
+        }
+    }
+
     pub fn lookup_uuid(&self, uuid: Uuid) -> Option<T::Id> {
         self.uuid_to_id.get(&uuid).copied()
+    }
+
+    #[track_caller]
+    pub fn lookup_uuid_or_err(&self, uuid: Uuid) -> Result<T::Id> {
+        match self.lookup_uuid(uuid) {
+            Some(v) => Ok(v),
+            None => Err(err_invalid_uuid(uuid)),
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (T::Id, &Metadata, &T)> + '_ {
@@ -174,4 +184,14 @@ impl<T: Object> Default for Storage<T> {
     fn default() -> Storage<T> {
         Storage::new()
     }
+}
+
+#[track_caller]
+fn err_invalid_id<I: ObjectId>(id: I) -> Error {
+    Error::new(ErrorKind::InvalidId, format!("{id:?} doesn't exist"))
+}
+
+#[track_caller]
+fn err_invalid_uuid(uuid: Uuid) -> Error {
+    Error::new(ErrorKind::InvalidUuid, format!("{uuid} doesn't exist"))
 }

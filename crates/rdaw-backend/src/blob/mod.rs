@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use blake3::Hash;
 use rdaw_api::blob::BlobId;
+use rdaw_api::Result;
 
 pub use self::cache::BlobCache;
-use crate::document;
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for BlobId {
@@ -34,14 +34,11 @@ impl Object for Blob {
 
     const TYPE: ObjectType = ObjectType::Blob;
 
-    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
         todo!()
     }
 
-    fn deserialize(
-        _ctx: &mut DeserializationContext<'_>,
-        _data: &[u8],
-    ) -> Result<Self, document::Error> {
+    fn deserialize(_ctx: &mut DeserializationContext<'_>, _data: &[u8]) -> Result<Self> {
         todo!()
     }
 }

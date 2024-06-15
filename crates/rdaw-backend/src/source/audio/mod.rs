@@ -3,8 +3,8 @@ mod ops;
 use rdaw_api::audio::AudioMetadata;
 use rdaw_api::blob::BlobId;
 use rdaw_api::source::AudioSourceId;
+use rdaw_api::Result;
 
-use crate::document;
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for AudioSourceId {
@@ -22,14 +22,11 @@ impl Object for AudioSource {
 
     const TYPE: ObjectType = ObjectType::AudioSource;
 
-    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
         todo!()
     }
 
-    fn deserialize(
-        _ctx: &mut DeserializationContext<'_>,
-        _data: &[u8],
-    ) -> Result<Self, document::Error> {
+    fn deserialize(_ctx: &mut DeserializationContext<'_>, _data: &[u8]) -> Result<Self> {
         todo!()
     }
 }

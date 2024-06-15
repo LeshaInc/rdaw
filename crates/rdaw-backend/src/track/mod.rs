@@ -5,11 +5,11 @@ mod tests;
 mod view;
 
 use rdaw_api::track::{TrackId, TrackItem, TrackItemId};
+use rdaw_api::Result;
 use rdaw_core::collections::HashSet;
 use slotmap::SlotMap;
 
 pub use self::view::{TrackView, TrackViewCache};
-use crate::document;
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for TrackId {
@@ -38,14 +38,11 @@ impl Object for Track {
 
     const TYPE: ObjectType = ObjectType::Track;
 
-    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
         self::encoding::serialize(ctx, self)
     }
 
-    fn deserialize(
-        ctx: &mut DeserializationContext<'_>,
-        data: &[u8],
-    ) -> Result<Self, document::Error> {
+    fn deserialize(ctx: &mut DeserializationContext<'_>, data: &[u8]) -> Result<Self> {
         self::encoding::deserialize(ctx, data)
     }
 }

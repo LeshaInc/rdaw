@@ -1,10 +1,10 @@
 use rdaw_api::document::DocumentId;
+use rdaw_api::Result;
 use rdaw_core::Uuid;
 
 use super::{Hub, Metadata, Object, ObjectId, ObjectType, StorageRef};
 use crate::arrangement::Arrangement;
 use crate::blob::Blob;
-use crate::document::Error;
 use crate::item::AudioItem;
 use crate::source::AudioSource;
 use crate::tempo_map::TempoMap;
@@ -17,7 +17,7 @@ pub struct SerializationContext<'a> {
 }
 
 impl SerializationContext<'_> {
-    pub fn serialize_graph<I: ObjectId>(hub: &Hub, root_id: I) -> Result<Uuid, Error>
+    pub fn serialize_graph<I: ObjectId>(hub: &Hub, root_id: I) -> Result<Uuid>
     where
         I::Object: StorageRef,
     {
@@ -32,17 +32,17 @@ impl SerializationContext<'_> {
         Ok(uuid)
     }
 
-    pub fn add_dep<I: ObjectId>(&mut self, id: I) -> Result<Uuid, Error>
+    pub fn add_dep<I: ObjectId>(&mut self, id: I) -> Result<Uuid>
     where
         I::Object: StorageRef,
     {
         let storage = self.hub.storage::<I::Object>();
-        let metadata = storage.get_metadata(id).ok_or(Error::InvalidId)?;
+        let metadata = storage.get_metadata_or_err(id)?;
         self.deps.push((I::Object::TYPE, metadata.uuid));
         Ok(metadata.uuid)
     }
 
-    fn serialize_all(&mut self) -> Result<(), Error> {
+    fn serialize_all(&mut self) -> Result<()> {
         while let Some((ty, uuid)) = self.deps.pop() {
             match ty {
                 ObjectType::AudioItem => self.serialize::<AudioItem>(uuid)?,
@@ -57,10 +57,10 @@ impl SerializationContext<'_> {
         Ok(())
     }
 
-    fn serialize<T: Object + StorageRef>(&mut self, uuid: Uuid) -> Result<(), Error> {
+    fn serialize<T: Object + StorageRef>(&mut self, uuid: Uuid) -> Result<()> {
         let storage = self.hub.storage::<T>();
-        let id = storage.lookup_uuid(uuid).ok_or(Error::InvalidId)?;
-        let object = storage.get(id).ok_or(Error::InvalidId)?;
+        let id = storage.lookup_uuid_or_err(uuid)?;
+        let object = storage.get_or_err(id)?;
 
         let _data = object.serialize(self)?;
 
@@ -83,7 +83,7 @@ impl DeserializationContext<'_> {
         hub: &mut Hub,
         document_id: DocumentId,
         root_uuid: Uuid,
-    ) -> Result<I, Error>
+    ) -> Result<I>
     where
         I::Object: StorageRef,
     {
@@ -99,7 +99,7 @@ impl DeserializationContext<'_> {
         Ok(root_id)
     }
 
-    pub fn add_dep<I: ObjectId>(&mut self, uuid: Uuid) -> Result<I, Error>
+    pub fn add_dep<I: ObjectId>(&mut self, uuid: Uuid) -> Result<I>
     where
         I::Object: StorageRef,
     {
@@ -119,7 +119,7 @@ impl DeserializationContext<'_> {
         Ok(id)
     }
 
-    fn deserialize_all(&mut self) -> Result<(), Error> {
+    fn deserialize_all(&mut self) -> Result<()> {
         while let Some((ty, uuid)) = self.deps.pop() {
             match ty {
                 ObjectType::AudioItem => self.deserialize::<AudioItem>(uuid)?,
@@ -134,9 +134,9 @@ impl DeserializationContext<'_> {
         Ok(())
     }
 
-    fn deserialize<T: Object + StorageRef>(&mut self, uuid: Uuid) -> Result<(), Error> {
+    fn deserialize<T: Object + StorageRef>(&mut self, uuid: Uuid) -> Result<()> {
         let storage = self.hub.storage::<T>();
-        let id = storage.lookup_uuid(uuid).ok_or(Error::InvalidUuid)?;
+        let id = storage.lookup_uuid_or_err(uuid)?;
 
         // TODO: get data from the document
         let data = &[0];

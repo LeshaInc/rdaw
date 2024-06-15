@@ -13,6 +13,7 @@ pub enum ErrorKind {
     IndexOutOfBounds,
     InvalidId,
     InvalidType,
+    InvalidUtf8,
     InvalidUuid,
     Io,
     NotFound,
@@ -20,6 +21,8 @@ pub enum ErrorKind {
     Other,
     PermissionDenied,
     Serialization,
+    Sql,
+    UnknownVersion,
 }
 
 impl From<io::ErrorKind> for ErrorKind {
@@ -235,4 +238,31 @@ fn capture_backtrace() -> Vec<Location> {
     });
 
     backtrace
+}
+
+pub trait ResultExt<T, E> {
+    fn convert_err(self, kind: ErrorKind) -> Result<T, Error>;
+
+    fn convert_err_with<F: FnOnce(&E) -> ErrorKind>(self, get_kind: F) -> Result<T, Error>;
+}
+
+impl<T, E: std::error::Error> ResultExt<T, E> for Result<T, E> {
+    #[track_caller]
+    fn convert_err(self, kind: ErrorKind) -> Result<T, Error> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(Error::new(kind, e)),
+        }
+    }
+
+    #[track_caller]
+    fn convert_err_with<F: FnOnce(&E) -> ErrorKind>(self, get_kind: F) -> Result<T, Error> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let kind = get_kind(&e);
+                Err(Error::new(kind, e))
+            }
+        }
+    }
 }

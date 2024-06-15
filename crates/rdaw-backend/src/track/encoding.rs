@@ -1,12 +1,13 @@
 use rdaw_api::item::{ItemId, ItemKind};
 use rdaw_api::time::Time;
 use rdaw_api::track::TrackItem;
+use rdaw_api::Result;
 use serde::{Deserialize, Serialize};
 use slotmap::SlotMap;
 
 use super::{Track, TrackLinks};
 use crate::define_version_enum;
-use crate::document::{encoding, Result};
+use crate::document::encoding;
 use crate::object::{DeserializationContext, SerializationContext, Uuid};
 
 pub fn serialize(ctx: &mut SerializationContext<'_>, track: &Track) -> Result<Vec<u8>> {

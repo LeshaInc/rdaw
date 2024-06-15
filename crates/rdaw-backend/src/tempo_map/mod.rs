@@ -1,8 +1,8 @@
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::time::{BeatTime, Time};
+use rdaw_api::Result;
 use rdaw_core::time::RealTime;
 
-use crate::document;
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for TempoMapId {
@@ -50,14 +50,11 @@ impl Object for TempoMap {
 
     const TYPE: ObjectType = ObjectType::TempoMap;
 
-    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
         todo!()
     }
 
-    fn deserialize(
-        _ctx: &mut DeserializationContext<'_>,
-        _data: &[u8],
-    ) -> Result<Self, document::Error> {
+    fn deserialize(_ctx: &mut DeserializationContext<'_>, _data: &[u8]) -> Result<Self> {
         todo!()
     }
 }

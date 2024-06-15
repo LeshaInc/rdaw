@@ -4,8 +4,8 @@ mod ops;
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::track::TrackId;
+use rdaw_api::Result;
 
-use crate::document;
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for ArrangementId {
@@ -24,14 +24,11 @@ impl Object for Arrangement {
 
     const TYPE: ObjectType = ObjectType::Arrangement;
 
-    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>, document::Error> {
+    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
         self::encoding::serialize(ctx, self)
     }
 
-    fn deserialize(
-        ctx: &mut DeserializationContext<'_>,
-        data: &[u8],
-    ) -> Result<Self, document::Error> {
+    fn deserialize(ctx: &mut DeserializationContext<'_>, data: &[u8]) -> Result<Self> {
         self::encoding::deserialize(ctx, data)
     }
 }

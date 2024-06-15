@@ -1,8 +1,9 @@
+use rdaw_api::Result;
 use serde::{Deserialize, Serialize};
 
 use super::Arrangement;
 use crate::define_version_enum;
-use crate::document::{encoding, Result};
+use crate::document::encoding;
 use crate::object::{DeserializationContext, SerializationContext, Uuid};
 
 pub fn serialize(ctx: &mut SerializationContext<'_>, arrangement: &Arrangement) -> Result<Vec<u8>> {

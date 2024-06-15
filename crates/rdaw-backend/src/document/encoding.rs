@@ -1,20 +1,25 @@
+use rdaw_api::error::ResultExt;
+use rdaw_api::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
-
-use super::{Error, Result};
 
 pub fn serialize<T: Serialize>(version: u32, value: &T) -> Result<Vec<u8>> {
     let mut vec = Vec::with_capacity(128);
     vec.extend(version.to_le_bytes());
-    postcard::to_extend(value, vec).map_err(|_| Error::SerializationFailed)
+    postcard::to_extend(value, vec).convert_err(ErrorKind::Serialization)
 }
 
 pub fn extract_version(data: &[u8]) -> Result<(u32, &[u8]), Error> {
-    let version = u32::from_le_bytes(data[0..4].try_into().map_err(|_| Error::InvalidDocument)?);
+    let version = u32::from_le_bytes(
+        data[0..4]
+            .try_into()
+            .map_err(|_| Error::new(ErrorKind::Deserialization, "version field too short"))?,
+    );
+
     Ok((version, &data[4..]))
 }
 
 pub fn deserialize<'de, T: Deserialize<'de>>(data: &'de [u8]) -> Result<T, Error> {
-    postcard::from_bytes(data).map_err(|_| Error::InvalidDocument)
+    postcard::from_bytes(data).convert_err(ErrorKind::Deserialization)
 }
 
 #[macro_export]
@@ -38,11 +43,11 @@ macro_rules! define_version_enum {
         impl $Version {
             pub const LATEST: $Version = $Version::$Latest;
 
-            pub fn from_u32(v: u32) -> Result<$Version, $crate::document::Error> {
+            pub fn from_u32(v: u32) -> Result<$Version, rdaw_api::Error> {
                 match v {
                     $( _ if v == $Version::$Ver as u32 => Ok($Version::$Ver), )*
                     _ if v == $Version::$Latest as u32 => Ok($Version::$Latest),
-                    _ => Err($crate::document::Error::UnsupportedVersion)
+                    _ => Err(rdaw_api::Error::new(rdaw_api::ErrorKind::UnknownVersion, format!("unknown version {v}"))),
                 }
             }
 
