@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use blake3::Hash;
-use rdaw_api::{Error as ApiError, ErrorKind};
+use rdaw_api::{bail, format_err, ErrorKind};
 use rdaw_core::Uuid;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
@@ -56,7 +56,7 @@ impl Database {
         db.configure()?;
 
         let Some(version) = db.read_version()? else {
-            return Err(ApiError::new(ErrorKind::Deserialization, "version field missing").into());
+            bail!(ErrorKind::Deserialization, "version field missing");
         };
 
         match version {
@@ -168,9 +168,10 @@ impl Database {
             .prefix(".rdaw-temp-")
             .tempfile_in(target_dir)?;
 
-        let temp_path_str = temp_file.path().to_str().ok_or_else(|| {
-            ApiError::new(ErrorKind::InvalidUtf8, "invalid utf-8 in document path")
-        })?;
+        let temp_path_str = temp_file
+            .path()
+            .to_str()
+            .ok_or_else(|| format_err!(ErrorKind::InvalidUtf8, "invalid utf-8 in document path"))?;
 
         self.db.execute("VACUUM INTO ?1", [temp_path_str])?;
 
@@ -299,7 +300,7 @@ impl Database {
                     hash: Some(hash),
                     total_len: row.get(1)?,
                     compression: Compression::from_u8(row.get(2)?).ok_or_else(|| {
-                        ApiError::new(ErrorKind::Deserialization, "invalid compression type")
+                        format_err!(ErrorKind::Deserialization, "invalid compression type")
                     })?,
                 };
 
@@ -419,13 +420,13 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(#[from] rdaw_api::Error),
 }
 
-impl From<Error> for ApiError {
+impl From<Error> for rdaw_api::Error {
     fn from(value: Error) -> Self {
         match value {
-            Error::Sql(v) => ApiError::new(ErrorKind::Sql, v),
+            Error::Sql(v) => rdaw_api::Error::new(ErrorKind::Sql, v),
             Error::Io(v) => v.into(),
             Error::Api(v) => v,
         }

@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use rdaw_api::{Error, ErrorKind, Result};
+use rdaw_api::{bail, format_err, Error, ErrorKind, Result};
 use rdaw_core::collections::{HashMap, HashSet};
 use rdaw_core::Uuid;
 use slotmap::SlotMap;
@@ -112,13 +112,11 @@ impl<T: Object> Storage<T> {
             self.ensure_has(id)?;
         }
 
-        match self.map.get_disjoint_mut(ids) {
-            Some(arr) => Ok(arr.map(|v| v.object.as_mut().unwrap())),
-            None => Err(Error::new(
-                ErrorKind::Other,
-                "duplicate ids in get_disjoint_mut",
-            )),
-        }
+        let Some(arr) = self.map.get_disjoint_mut(ids) else {
+            bail!(ErrorKind::Other, "duplicate ids in get_disjoint_mut");
+        };
+
+        Ok(arr.map(|v| v.object.as_mut().unwrap()))
     }
 
     pub fn get_metadata(&self, id: T::Id) -> Option<&Metadata> {
@@ -188,10 +186,10 @@ impl<T: Object> Default for Storage<T> {
 
 #[track_caller]
 fn err_invalid_id<I: ObjectId>(id: I) -> Error {
-    Error::new(ErrorKind::InvalidId, format!("{id:?} doesn't exist"))
+    format_err!(ErrorKind::InvalidId, "{id:?} doesn't exist")
 }
 
 #[track_caller]
 fn err_invalid_uuid(uuid: Uuid) -> Error {
-    Error::new(ErrorKind::InvalidUuid, format!("{uuid} doesn't exist"))
+    format_err!(ErrorKind::InvalidId, "{uuid} doesn't exist")
 }

@@ -1,5 +1,5 @@
 use rdaw_api::error::ResultExt;
-use rdaw_api::{Error, ErrorKind, Result};
+use rdaw_api::{format_err, Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
 
 pub fn serialize<T: Serialize>(version: u32, value: &T) -> Result<Vec<u8>> {
@@ -12,7 +12,7 @@ pub fn extract_version(data: &[u8]) -> Result<(u32, &[u8]), Error> {
     let version = u32::from_le_bytes(
         data[0..4]
             .try_into()
-            .map_err(|_| Error::new(ErrorKind::Deserialization, "version field too short"))?,
+            .map_err(|_| format_err!(ErrorKind::Deserialization, "version field too short"))?,
     );
 
     Ok((version, &data[4..]))
@@ -47,7 +47,7 @@ macro_rules! define_version_enum {
                 match v {
                     $( _ if v == $Version::$Ver as u32 => Ok($Version::$Ver), )*
                     _ if v == $Version::$Latest as u32 => Ok($Version::$Latest),
-                    _ => Err(rdaw_api::Error::new(rdaw_api::ErrorKind::UnknownVersion, format!("unknown version {v}"))),
+                    _ => Err(rdaw_api::format_err!(rdaw_api::ErrorKind::UnknownVersion, "unknown version {v}")),
                 }
             }
 

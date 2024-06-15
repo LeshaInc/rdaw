@@ -4,7 +4,7 @@ use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
     TrackOperations, TrackRequest, TrackResponse, TrackViewEvent, TrackViewId, TrackViewItem,
 };
-use rdaw_api::{BackendProtocol, Error, ErrorKind, Result};
+use rdaw_api::{bail, format_err, BackendProtocol, ErrorKind, Result};
 use rdaw_rpc::StreamId;
 use slotmap::Key;
 use tracing::instrument;
@@ -202,26 +202,26 @@ impl Backend {
         self.hub.tracks.ensure_has(child_id)?;
 
         if parent_id == child_id {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::NotSupported,
                 "recursive tracks are not supported",
-            ));
+            );
         }
 
         let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
 
         if index > parent.links.children.len() {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::IndexOutOfBounds,
                 "index out of bounds passed to insert_track_child",
-            ));
+            );
         }
 
         if parent.links.ancestors.contains(&child_id) {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::NotSupported,
                 "recursive tracks are not supported",
-            ));
+            );
         }
 
         parent.links.children.insert(index, child_id);
@@ -256,10 +256,10 @@ impl Backend {
         let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
 
         if old_index >= parent.links.children.len() || new_index >= parent.links.children.len() {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::IndexOutOfBounds,
                 "index out of bounds passed to move_track",
-            ));
+            );
         }
 
         let child_id = parent.links.children.remove(old_index);
@@ -279,17 +279,17 @@ impl Backend {
     ) -> Result<()> {
         let old_parent = self.hub.tracks.get_or_err(old_parent_id)?;
         let &child_id = old_parent.links.children.get(old_index).ok_or_else(|| {
-            Error::new(
+            format_err!(
                 ErrorKind::IndexOutOfBounds,
                 "index out of bounds passed to move_track",
             )
         })?;
 
         if child_id == old_parent_id || child_id == new_parent_id {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::NotSupported,
                 "recursive tracks are not supported",
-            ));
+            );
         }
 
         let [old_parent, new_parent] = self
@@ -298,17 +298,17 @@ impl Backend {
             .get_disjoint_mut_or_err([old_parent_id, new_parent_id])?;
 
         if new_index > new_parent.links.children.len() {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::IndexOutOfBounds,
                 "index out of bounds passed to move_track",
-            ));
+            );
         }
 
         if new_parent.links.ancestors.contains(&child_id) {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::NotSupported,
                 "recursive tracks are not supported",
-            ));
+            );
         }
 
         let child_id = old_parent.links.children.remove(old_index);
@@ -332,10 +332,10 @@ impl Backend {
         let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
 
         if index >= parent.links.children.len() {
-            return Err(Error::new(
+            bail!(
                 ErrorKind::IndexOutOfBounds,
                 "index out of bounds passed to remove_track_child",
-            ));
+            );
         }
 
         let child_id = parent.links.children.remove(index);
@@ -374,9 +374,9 @@ impl Backend {
     pub fn get_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
         let track = self.hub.tracks.get_or_err(track_id)?;
         track.items.get(item_id).copied().ok_or_else(|| {
-            Error::new(
+            format_err!(
                 ErrorKind::InvalidId,
-                format!("{item_id:?} doesn't exist in {track_id:?}"),
+                "{item_id:?} doesn't exist in {track_id:?}",
             )
         })
     }
@@ -409,9 +409,9 @@ impl Backend {
     ) -> Result<()> {
         let track = self.hub.tracks.get_mut_or_err(track_id)?;
         let item = track.items.get_mut(item_id).ok_or_else(|| {
-            Error::new(
+            format_err!(
                 ErrorKind::InvalidId,
-                format!("{item_id:?} doesn't exist in {track_id:?}"),
+                "{item_id:?} doesn't exist in {track_id:?}",
             )
         })?;
 
@@ -442,9 +442,9 @@ impl Backend {
     ) -> Result<()> {
         let track = self.hub.tracks.get_mut_or_err(track_id)?;
         let item = track.items.get_mut(item_id).ok_or_else(|| {
-            Error::new(
+            format_err!(
                 ErrorKind::InvalidId,
-                format!("{item_id:?} doesn't exist in {track_id:?}"),
+                "{item_id:?} doesn't exist in {track_id:?}",
             )
         })?;
 
@@ -477,9 +477,10 @@ impl Backend {
 
         let view = self.track_view_cache.get_or_insert(&self.hub, view_id);
         view.get_item(item_id).copied().ok_or_else(|| {
-            Error::new(
+            format_err!(
                 ErrorKind::InvalidId,
-                format!("{item_id:?} doesn't exist in {:?}", view_id.track_id),
+                "{item_id:?} doesn't exist in {:?}",
+                view_id.track_id,
             )
         })
     }

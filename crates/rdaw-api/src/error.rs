@@ -276,3 +276,17 @@ macro_rules! assert_err {
         }
     };
 }
+
+#[macro_export]
+macro_rules! format_err {
+    ($kind:expr, $($arg:tt)*) => {
+        $crate::Error::new($kind, format!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! bail {
+    ($kind:expr, $($arg:tt)*) => {
+        return Err($crate::format_err!($kind, $($arg)*).into());
+    };
+}
