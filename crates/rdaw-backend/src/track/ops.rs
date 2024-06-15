@@ -4,7 +4,7 @@ use rdaw_api::track::{
     TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
     TrackOperations, TrackRequest, TrackResponse, TrackViewEvent, TrackViewId, TrackViewItem,
 };
-use rdaw_api::{BackendProtocol, Error, Result};
+use rdaw_api::{BackendProtocol, Error, ErrorKind, Result};
 use rdaw_rpc::StreamId;
 use slotmap::Key;
 use tracing::instrument;
@@ -41,48 +41,36 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_track(&mut self, id: TrackId) -> Result<StreamId> {
-        if !self.hub.tracks.has(id) {
-            return Err(Error::InvalidId);
-        }
-
+        self.hub.tracks.ensure_has(id)?;
         Ok(self.subscribers.track.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_track_hierarchy(&mut self, id: TrackId) -> Result<StreamId> {
-        if !self.hub.tracks.has(id) {
-            return Err(Error::InvalidId);
-        }
-
+        self.hub.tracks.ensure_has(id)?;
         Ok(self.subscribers.track_hierarchy.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_track_view(&mut self, id: TrackViewId) -> Result<StreamId> {
-        if !self.hub.arrangements.has(id.arrangement_id) {
-            return Err(Error::InvalidId);
-        }
-
-        if !self.hub.tracks.has(id.track_id) {
-            return Err(Error::InvalidId);
-        }
-
+        self.hub.arrangements.ensure_has(id.arrangement_id)?;
+        self.hub.tracks.ensure_has(id.track_id)?;
         Ok(self.subscribers.track_view.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn get_track_name(&self, id: TrackId) -> Result<String> {
-        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_or_err(id)?;
         Ok(track.name.clone())
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
-        let track = self.hub.tracks.get_mut(id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_mut_or_err(id)?;
         track.name.clone_from(&new_name);
 
         let event = TrackEvent::NameChanged { new_name };
@@ -94,7 +82,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn get_track_children(&self, id: TrackId) -> Result<Vec<TrackId>> {
-        let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_or_err(id)?;
         Ok(track.links.children.clone())
     }
 
@@ -107,7 +95,7 @@ impl Backend {
         stack.push(id);
 
         while let Some(id) = stack.pop() {
-            let track = self.hub.tracks.get(id).ok_or(Error::InvalidId)?;
+            let track = self.hub.tracks.get_or_err(id)?;
             let children = track.links.children.to_vec();
             stack.extend(children.iter().copied());
             hierarchy.set_children(id, children);
@@ -197,7 +185,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn append_track_child(&mut self, parent_id: TrackId, child_id: TrackId) -> Result<()> {
-        let track = self.hub.tracks.get(parent_id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_or_err(parent_id)?;
         let index = track.links.children.len();
         self.insert_track_child(parent_id, child_id, index)
     }
@@ -210,22 +198,30 @@ impl Backend {
         child_id: TrackId,
         index: usize,
     ) -> Result<()> {
-        if !self.hub.tracks.has(parent_id) || !self.hub.tracks.has(child_id) {
-            return Err(Error::InvalidId);
-        }
+        self.hub.tracks.ensure_has(parent_id)?;
+        self.hub.tracks.ensure_has(child_id)?;
 
         if parent_id == child_id {
-            return Err(Error::RecursiveTrack);
+            return Err(Error::new(
+                ErrorKind::NotSupported,
+                "recursive tracks are not supported",
+            ));
         }
 
-        let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
+        let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
 
         if index > parent.links.children.len() {
-            return Err(Error::IndexOutOfBounds);
+            return Err(Error::new(
+                ErrorKind::IndexOutOfBounds,
+                "index out of bounds passed to insert_track_child",
+            ));
         }
 
         if parent.links.ancestors.contains(&child_id) {
-            return Err(Error::RecursiveTrack);
+            return Err(Error::new(
+                ErrorKind::NotSupported,
+                "recursive tracks are not supported",
+            ));
         }
 
         parent.links.children.insert(index, child_id);
@@ -257,10 +253,13 @@ impl Backend {
         old_index: usize,
         new_index: usize,
     ) -> Result<()> {
-        let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
+        let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
 
         if old_index >= parent.links.children.len() || new_index >= parent.links.children.len() {
-            return Err(Error::IndexOutOfBounds);
+            return Err(Error::new(
+                ErrorKind::IndexOutOfBounds,
+                "index out of bounds passed to move_track",
+            ));
         }
 
         let child_id = parent.links.children.remove(old_index);
@@ -278,29 +277,38 @@ impl Backend {
         new_parent_id: TrackId,
         new_index: usize,
     ) -> Result<()> {
-        let old_parent = self.hub.tracks.get(old_parent_id).ok_or(Error::InvalidId)?;
-        let &child_id = old_parent
-            .links
-            .children
-            .get(old_index)
-            .ok_or(Error::IndexOutOfBounds)?;
+        let old_parent = self.hub.tracks.get_or_err(old_parent_id)?;
+        let &child_id = old_parent.links.children.get(old_index).ok_or_else(|| {
+            Error::new(
+                ErrorKind::IndexOutOfBounds,
+                "index out of bounds passed to move_track",
+            )
+        })?;
 
         if child_id == old_parent_id || child_id == new_parent_id {
-            return Err(Error::RecursiveTrack);
+            return Err(Error::new(
+                ErrorKind::NotSupported,
+                "recursive tracks are not supported",
+            ));
         }
 
         let [old_parent, new_parent] = self
             .hub
             .tracks
-            .get_disjoint_mut([old_parent_id, new_parent_id])
-            .ok_or(Error::InvalidId)?;
+            .get_disjoint_mut_or_err([old_parent_id, new_parent_id])?;
 
         if new_index > new_parent.links.children.len() {
-            return Err(Error::IndexOutOfBounds);
+            return Err(Error::new(
+                ErrorKind::IndexOutOfBounds,
+                "index out of bounds passed to move_track",
+            ));
         }
 
         if new_parent.links.ancestors.contains(&child_id) {
-            return Err(Error::RecursiveTrack);
+            return Err(Error::new(
+                ErrorKind::NotSupported,
+                "recursive tracks are not supported",
+            ));
         }
 
         let child_id = old_parent.links.children.remove(old_index);
@@ -321,10 +329,13 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
-        let parent = self.hub.tracks.get_mut(parent_id).ok_or(Error::InvalidId)?;
+        let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
 
         if index >= parent.links.children.len() {
-            return Err(Error::IndexOutOfBounds);
+            return Err(Error::new(
+                ErrorKind::IndexOutOfBounds,
+                "index out of bounds passed to remove_track_child",
+            ));
         }
 
         let child_id = parent.links.children.remove(index);
@@ -341,7 +352,7 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn add_track_item(&mut self, track_id: TrackId, item: TrackItem) -> Result<TrackItemId> {
-        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_mut_or_err(track_id)?;
         let item_id = track.items.insert(item);
 
         for (view_id, view) in self.track_view_cache.iter_mut(track_id) {
@@ -361,15 +372,23 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn get_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
-        let track = self.hub.tracks.get(track_id).ok_or(Error::InvalidId)?;
-        track.items.get(item_id).copied().ok_or(Error::InvalidId)
+        let track = self.hub.tracks.get_or_err(track_id)?;
+        track.items.get(item_id).copied().ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidId,
+                format!("{item_id:?} doesn't exist in {track_id:?}"),
+            )
+        })
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn remove_track_item(&mut self, track_id: TrackId, item_id: TrackItemId) -> Result<()> {
-        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
-        track.items.remove(item_id);
+        let track = self.hub.tracks.get_mut_or_err(track_id)?;
+
+        if track.items.remove(item_id).is_none() {
+            return Ok(());
+        }
 
         for (view_id, view) in self.track_view_cache.iter_mut(track_id) {
             view.remove_item(item_id);
@@ -388,8 +407,13 @@ impl Backend {
         item_id: TrackItemId,
         new_start: Time,
     ) -> Result<()> {
-        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
-        let item = track.items.get_mut(item_id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_mut_or_err(track_id)?;
+        let item = track.items.get_mut(item_id).ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidId,
+                format!("{item_id:?} doesn't exist in {track_id:?}"),
+            )
+        })?;
 
         item.start = new_start;
 
@@ -416,8 +440,13 @@ impl Backend {
         item_id: TrackItemId,
         new_duration: Time,
     ) -> Result<()> {
-        let track = self.hub.tracks.get_mut(track_id).ok_or(Error::InvalidId)?;
-        let item = track.items.get_mut(item_id).ok_or(Error::InvalidId)?;
+        let track = self.hub.tracks.get_mut_or_err(track_id)?;
+        let item = track.items.get_mut(item_id).ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidId,
+                format!("{item_id:?} doesn't exist in {track_id:?}"),
+            )
+        })?;
 
         item.duration = new_duration;
 
@@ -443,14 +472,16 @@ impl Backend {
         view_id: TrackViewId,
         item_id: TrackItemId,
     ) -> Result<TrackViewItem> {
-        if !self.hub.arrangements.has(view_id.arrangement_id)
-            || !self.hub.tracks.has(view_id.track_id)
-        {
-            return Err(Error::InvalidId);
-        }
+        self.hub.arrangements.ensure_has(view_id.arrangement_id)?;
+        self.hub.tracks.ensure_has(view_id.track_id)?;
 
         let view = self.track_view_cache.get_or_insert(&self.hub, view_id);
-        view.get_item(item_id).copied().ok_or(Error::InvalidId)
+        view.get_item(item_id).copied().ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidId,
+                format!("{item_id:?} doesn't exist in {:?}", view_id.track_id),
+            )
+        })
     }
 
     #[instrument(skip_all, err)]
@@ -461,11 +492,8 @@ impl Backend {
         start: Option<Time>,
         end: Option<Time>,
     ) -> Result<Vec<(TrackItemId, TrackViewItem)>> {
-        if !self.hub.arrangements.has(view_id.arrangement_id)
-            || !self.hub.tracks.has(view_id.track_id)
-        {
-            return Err(Error::InvalidId);
-        }
+        self.hub.arrangements.ensure_has(view_id.arrangement_id)?;
+        self.hub.tracks.ensure_has(view_id.track_id)?;
 
         let arrangement = &self.hub.arrangements[view_id.arrangement_id];
         let tempo_map = &self.hub.tempo_maps[arrangement.tempo_map_id];

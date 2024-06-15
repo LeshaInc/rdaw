@@ -4,7 +4,7 @@ use rdaw_api::arrangement::{
 use rdaw_api::document::DocumentId;
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::track::TrackId;
-use rdaw_api::{BackendProtocol, Error, Result};
+use rdaw_api::{BackendProtocol, Result};
 use rdaw_rpc::StreamId;
 use slotmap::Key;
 use tracing::instrument;
@@ -63,24 +63,21 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn subscribe_arrangement(&mut self, id: ArrangementId) -> Result<StreamId> {
-        if !self.hub.arrangements.has(id) {
-            return Err(Error::InvalidId);
-        }
-
+        self.hub.arrangements.ensure_has(id)?;
         Ok(self.subscribers.arrangement.subscribe(id))
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn get_arrangement_name(&self, id: ArrangementId) -> Result<String> {
-        let arrangement = self.hub.arrangements.get(id).ok_or(Error::InvalidId)?;
+        let arrangement = self.hub.arrangements.get_or_err(id)?;
         Ok(arrangement.name.clone())
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn set_arrangement_name(&mut self, id: ArrangementId, new_name: String) -> Result<()> {
-        let arrangement = self.hub.arrangements.get_mut(id).ok_or(Error::InvalidId)?;
+        let arrangement = self.hub.arrangements.get_mut_or_err(id)?;
         arrangement.name.clone_from(&new_name);
 
         let event = ArrangementEvent::NameChanged { new_name };
@@ -92,14 +89,14 @@ impl Backend {
     #[instrument(skip_all, err)]
     #[handler]
     pub fn get_arrangement_main_track(&self, id: ArrangementId) -> Result<TrackId> {
-        let arrangement = self.hub.arrangements.get(id).ok_or(Error::InvalidId)?;
+        let arrangement = self.hub.arrangements.get_or_err(id)?;
         Ok(arrangement.main_track_id)
     }
 
     #[instrument(skip_all, err)]
     #[handler]
     pub fn get_arrangement_tempo_map(&self, id: ArrangementId) -> Result<TempoMapId> {
-        let arrangement = self.hub.arrangements.get(id).ok_or(Error::InvalidId)?;
+        let arrangement = self.hub.arrangements.get_or_err(id)?;
         Ok(arrangement.tempo_map_id)
     }
 }

@@ -12,3 +12,5 @@ futures.workspace = true
 serde.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true
+tracing-error.workspace = true
+tracing.workspace = true

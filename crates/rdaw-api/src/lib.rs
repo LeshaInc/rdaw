@@ -4,7 +4,7 @@ pub mod arrangement;
 pub mod audio;
 pub mod blob;
 pub mod document;
-mod error;
+pub mod error;
 pub mod item;
 pub mod source;
 pub mod tempo_map;
@@ -18,7 +18,7 @@ use std::pin::Pin;
 
 use futures::Stream;
 
-pub use self::error::{Error, Result};
+pub use self::error::{Error, ErrorKind, Result};
 
 pub trait Backend:
     self::arrangement::ArrangementOperations

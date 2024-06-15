@@ -4,9 +4,15 @@ use std::thread;
 use futures::executor::block_on;
 use rdaw_backend::Backend;
 use rdaw_rpc::{transport, Client};
+use tracing_error::ErrorLayer;
+use tracing_subscriber::layer::SubscriberExt;
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    let subscriber = tracing_subscriber::fmt()
+        .finish()
+        .with(ErrorLayer::default());
+
+    tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let (client_transport, server_transport) = transport::local(None);
 

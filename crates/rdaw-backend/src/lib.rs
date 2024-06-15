@@ -11,7 +11,7 @@ pub mod track;
 
 use std::sync::Arc;
 
-use rdaw_api::{BackendProtocol, BackendRequest, Error, Result};
+use rdaw_api::{BackendProtocol, BackendRequest, ErrorKind, Result};
 use rdaw_rpc::transport::{LocalServerTransport, ServerTransport};
 use rdaw_rpc::{ClientMessage, StreamIdAllocator};
 
@@ -54,7 +54,7 @@ impl Backend {
         loop {
             let msg = match self.transport.recv().await {
                 Ok(v) => v,
-                Err(Error::Disconnected) => return Ok(()),
+                Err(e) if e.kind() == ErrorKind::Disconnected => return Ok(()),
                 Err(e) => return Err(e),
             };
 

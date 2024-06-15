@@ -1,5 +1,6 @@
 use std::ops::{Index, IndexMut};
 
+use rdaw_api::{Error, ErrorKind, Result};
 use rdaw_core::collections::{HashMap, HashSet};
 use rdaw_core::Uuid;
 use slotmap::SlotMap;
@@ -60,12 +61,46 @@ impl<T: Object> Storage<T> {
         self.map.get(id).is_some_and(|v| v.object.is_some())
     }
 
+    #[track_caller]
+    pub fn ensure_has(&self, id: T::Id) -> Result<()> {
+        if self.has(id) {
+            Ok(())
+        } else {
+            Err(Error::new(
+                ErrorKind::InvalidId,
+                format!("{id:?} doesn't exist"),
+            ))
+        }
+    }
+
     pub fn get(&self, id: T::Id) -> Option<&T> {
         self.map.get(id).and_then(|v| v.object.as_ref())
     }
 
+    #[track_caller]
+    pub fn get_or_err(&self, id: T::Id) -> Result<&T> {
+        match self.get(id) {
+            Some(v) => Ok(v),
+            None => Err(Error::new(
+                ErrorKind::InvalidId,
+                format!("{id:?} doesn't exist"),
+            )),
+        }
+    }
+
     pub fn get_mut(&mut self, id: T::Id) -> Option<&mut T> {
         self.map.get_mut(id).and_then(|v| v.object.as_mut())
+    }
+
+    #[track_caller]
+    pub fn get_mut_or_err(&mut self, id: T::Id) -> Result<&mut T> {
+        match self.get_mut(id) {
+            Some(v) => Ok(v),
+            None => Err(Error::new(
+                ErrorKind::InvalidId,
+                format!("{id:?} doesn't exist"),
+            )),
+        }
     }
 
     pub fn get_disjoint_mut<const N: usize>(&mut self, ids: [T::Id; N]) -> Option<[&mut T; N]> {
@@ -75,6 +110,21 @@ impl<T: Object> Storage<T> {
             }
             Some(arr.map(|v| v.object.as_mut().unwrap()))
         })
+    }
+
+    #[track_caller]
+    pub fn get_disjoint_mut_or_err<const N: usize>(
+        &mut self,
+        ids: [T::Id; N],
+    ) -> Result<[&mut T; N]> {
+        for id in ids {
+            self.ensure_has(id)?;
+        }
+
+        self.map
+            .get_disjoint_mut(ids)
+            .ok_or_else(|| Error::new(ErrorKind::Other, "duplicate ids in get_disjoint_mut"))
+            .map(|arr| arr.map(|v| v.object.as_mut().unwrap()))
     }
 
     pub fn get_metadata(&self, id: T::Id) -> Option<&Metadata> {

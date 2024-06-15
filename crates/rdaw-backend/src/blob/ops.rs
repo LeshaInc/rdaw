@@ -34,7 +34,9 @@ impl Backend {
         document_id: DocumentId,
         path: PathBuf,
     ) -> Result<BlobId> {
-        let data = std::fs::read(&path).map_err(|error| Error::new_filesystem(&path, error))?;
+        let data = std::fs::read(&path).map_err(|e| {
+            Error::from(e).context(format!("failed to read file {}", path.display()))
+        })?;
 
         let hash = blake3::hash(&data);
         self.blob_cache.insert(hash, data);

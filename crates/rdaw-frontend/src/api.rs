@@ -12,7 +12,7 @@ pub fn get_backend() -> Arc<dyn Backend> {
 
 #[cold]
 pub fn handle_error(error: Error) {
-    tracing::error!(%error);
+    tracing::error!(?error);
 }
 
 pub fn call<Fac, Fut, Cb, Res>(fac: Fac, callback: Cb)
