@@ -2,19 +2,23 @@ use futures::StreamExt;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+use rdaw_api::document::DocumentOperations;
 use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackNode, TrackOperations};
-use rdaw_api::{Error, Result};
+use rdaw_api::{assert_err, ErrorKind, Result};
 
 use crate::tests::{invalid_track_id, run_test};
 
 #[test]
 fn list_tracks() -> Result<()> {
     run_test(|client| async move {
+        let document_id = client.create_document().await?;
+
         let tracks = client.list_tracks().await?;
         assert!(tracks.is_empty());
 
-        let track1 = client.create_track().await?;
-        let track2 = client.create_track().await?;
+        let track1 = client.create_track(document_id).await?;
+        let track2 = client.create_track(document_id).await?;
+        assert!(track1 != track2);
 
         let mut tracks = client.list_tracks().await?;
         tracks.sort_unstable();
@@ -26,25 +30,16 @@ fn list_tracks() -> Result<()> {
 }
 
 #[test]
-fn create_track() -> Result<()> {
-    run_test(|client| async move {
-        let track1 = client.create_track().await?;
-        let track2 = client.create_track().await?;
-        assert!(track1 != track2);
-
-        Ok(())
-    })
-}
-
-#[test]
 fn subscribe_track() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
-            client.subscribe_track(invalid_track_id()).await,
-            Err(Error::InvalidId),
-        ));
+        let document_id = client.create_document().await?;
 
-        let track = client.create_track().await?;
+        assert_err!(
+            client.subscribe_track(invalid_track_id()).await,
+            ErrorKind::InvalidId,
+        );
+
+        let track = client.create_track(document_id).await?;
         let mut stream = client.subscribe_track(track).await?;
 
         client.set_track_name(track, "New name".into()).await?;
@@ -63,20 +58,22 @@ fn subscribe_track() -> Result<()> {
 #[test]
 fn subscribe_track_hierarchy() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
-            client.subscribe_track_hierarchy(invalid_track_id()).await,
-            Err(Error::InvalidId),
-        ));
+        let document_id = client.create_document().await?;
 
-        let root = client.create_track().await?;
+        assert_err!(
+            client.subscribe_track_hierarchy(invalid_track_id()).await,
+            ErrorKind::InvalidId,
+        );
+
+        let root = client.create_track(document_id).await?;
         let mut stream = client.subscribe_track_hierarchy(root).await?;
 
-        let child1 = client.create_track().await?;
-        let child2 = client.create_track().await?;
+        let child1 = client.create_track(document_id).await?;
+        let child2 = client.create_track(document_id).await?;
         client.append_track_child(root, child1).await?;
         client.append_track_child(root, child2).await?;
 
-        let grandchild = client.create_track().await?;
+        let grandchild = client.create_track(document_id).await?;
         client.append_track_child(child1, grandchild).await?;
 
         assert_eq!(
@@ -116,12 +113,14 @@ fn subscribe_track_view() -> Result<()> {
 #[test]
 fn get_set_track_name() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
-            client.get_track_name(invalid_track_id()).await,
-            Err(Error::InvalidId),
-        ));
+        let document_id = client.create_document().await?;
 
-        let track = client.create_track().await?;
+        assert_err!(
+            client.get_track_name(invalid_track_id()).await,
+            ErrorKind::InvalidId,
+        );
+
+        let track = client.create_track(document_id).await?;
         assert_eq!(client.get_track_name(track).await?, "Track 1");
         client.set_track_name(track, "New name".into()).await?;
         assert_eq!(client.get_track_name(track).await?, "New name");
@@ -133,14 +132,16 @@ fn get_set_track_name() -> Result<()> {
 #[test]
 fn get_track_children() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
-            client.get_track_children(invalid_track_id()).await,
-            Err(Error::InvalidId),
-        ));
+        let document_id = client.create_document().await?;
 
-        let root = client.create_track().await?;
-        let child1 = client.create_track().await?;
-        let child2 = client.create_track().await?;
+        assert_err!(
+            client.get_track_children(invalid_track_id()).await,
+            ErrorKind::InvalidId,
+        );
+
+        let root = client.create_track(document_id).await?;
+        let child1 = client.create_track(document_id).await?;
+        let child2 = client.create_track(document_id).await?;
         client.append_track_child(root, child1).await?;
         client.append_track_child(root, child2).await?;
         assert_eq!(client.get_track_children(root).await?, vec![child1, child2]);
@@ -152,15 +153,17 @@ fn get_track_children() -> Result<()> {
 #[test]
 fn get_track_hierarchy() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
-            client.get_track_hierarchy(invalid_track_id()).await,
-            Err(Error::InvalidId),
-        ));
+        let document_id = client.create_document().await?;
 
-        let root = client.create_track().await?;
-        let child1 = client.create_track().await?;
-        let child2 = client.create_track().await?;
-        let grandchild = client.create_track().await?;
+        assert_err!(
+            client.get_track_hierarchy(invalid_track_id()).await,
+            ErrorKind::InvalidId,
+        );
+
+        let root = client.create_track(document_id).await?;
+        let child1 = client.create_track(document_id).await?;
+        let child2 = client.create_track(document_id).await?;
+        let grandchild = client.create_track(document_id).await?;
         client.append_track_child(root, child1).await?;
         client.append_track_child(root, child2).await?;
         client.append_track_child(child1, grandchild).await?;
@@ -229,26 +232,28 @@ fn get_track_hierarchy() -> Result<()> {
 #[test]
 fn append_track_child() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
+        let document_id = client.create_document().await?;
+
+        assert_err!(
             client
                 .append_track_child(invalid_track_id(), invalid_track_id())
                 .await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
-        let parent = client.create_track().await?;
+        let parent = client.create_track(document_id).await?;
 
-        assert!(matches!(
+        assert_err!(
             client.append_track_child(parent, invalid_track_id()).await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
-        let child = client.create_track().await?;
+        let child = client.create_track(document_id).await?;
 
-        assert!(matches!(
+        assert_err!(
             client.append_track_child(invalid_track_id(), child).await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
         client.append_track_child(parent, child).await?;
         assert_eq!(client.get_track_children(parent).await?, vec![child]);
@@ -260,40 +265,42 @@ fn append_track_child() -> Result<()> {
 #[test]
 fn insert_track_child() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
+        let document_id = client.create_document().await?;
+
+        assert_err!(
             client
                 .insert_track_child(invalid_track_id(), invalid_track_id(), 0)
                 .await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
-        let parent = client.create_track().await?;
+        let parent = client.create_track(document_id).await?;
 
-        assert!(matches!(
+        assert_err!(
             client
                 .insert_track_child(parent, invalid_track_id(), 0)
                 .await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
-        let child = client.create_track().await?;
+        let child = client.create_track(document_id).await?;
 
-        assert!(matches!(
+        assert_err!(
             client
                 .insert_track_child(invalid_track_id(), child, 0)
                 .await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
-        assert!(matches!(
+        assert_err!(
             client.insert_track_child(parent, child, 1).await,
-            Err(Error::IndexOutOfBounds),
-        ));
+            ErrorKind::IndexOutOfBounds,
+        );
 
         client.insert_track_child(parent, child, 0).await?;
         assert_eq!(client.get_track_children(parent).await?, vec![child]);
 
-        let child0 = client.create_track().await?;
+        let child0 = client.create_track(document_id).await?;
         client.insert_track_child(parent, child0, 0).await?;
         assert_eq!(
             client.get_track_children(parent).await?,
@@ -307,17 +314,19 @@ fn insert_track_child() -> Result<()> {
 #[test]
 fn move_track() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
+        let document_id = client.create_document().await?;
+
+        assert_err!(
             client
                 .move_track(invalid_track_id(), 0, invalid_track_id(), 0)
                 .await,
-            Err(Error::InvalidId),
-        ));
+            ErrorKind::InvalidId,
+        );
 
-        let root = client.create_track().await?;
-        let child1 = client.create_track().await?;
-        let child2 = client.create_track().await?;
-        let grandchild = client.create_track().await?;
+        let root = client.create_track(document_id).await?;
+        let child1 = client.create_track(document_id).await?;
+        let child2 = client.create_track(document_id).await?;
+        let grandchild = client.create_track(document_id).await?;
         client.append_track_child(root, child1).await?;
         client.append_track_child(root, child2).await?;
         client.append_track_child(child1, grandchild).await?;
@@ -331,10 +340,10 @@ fn move_track() -> Result<()> {
         assert_eq!(client.get_track_children(root).await?, vec![child2]);
         assert_eq!(client.get_track_children(child2).await?, vec![child1]);
 
-        assert!(matches!(
+        assert_err!(
             client.move_track(root, 0, child2, 0).await,
-            Err(Error::RecursiveTrack)
-        ));
+            ErrorKind::NotSupported
+        );
 
         Ok(())
     })
@@ -346,11 +355,13 @@ fn move_track_randomized() -> Result<()> {
     const NUM_ITERATIONS: usize = 1000;
 
     run_test(|client| async move {
+        let document_id = client.create_document().await?;
+
         let mut rng = SmallRng::seed_from_u64(1);
         let mut tracks = Vec::new();
 
         for _ in 0..NUM_TRACKS {
-            tracks.push(client.create_track().await?);
+            tracks.push(client.create_track(document_id).await?);
         }
 
         let root = tracks[0];
@@ -395,7 +406,7 @@ fn move_track_randomized() -> Result<()> {
                 .await;
 
             if is_recursive {
-                assert!(matches!(res, Err(Error::RecursiveTrack)));
+                assert_err!(res, ErrorKind::NotSupported);
             } else {
                 res?;
             }
@@ -408,21 +419,23 @@ fn move_track_randomized() -> Result<()> {
 #[test]
 fn remove_track_child() -> Result<()> {
     run_test(|client| async move {
-        assert!(matches!(
-            client.remove_track_child(invalid_track_id(), 0).await,
-            Err(Error::InvalidId)
-        ));
+        let document_id = client.create_document().await?;
 
-        let root = client.create_track().await?;
-        let child1 = client.create_track().await?;
-        let child2 = client.create_track().await?;
+        assert_err!(
+            client.remove_track_child(invalid_track_id(), 0).await,
+            ErrorKind::InvalidId
+        );
+
+        let root = client.create_track(document_id).await?;
+        let child1 = client.create_track(document_id).await?;
+        let child2 = client.create_track(document_id).await?;
         client.append_track_child(root, child1).await?;
         client.append_track_child(root, child2).await?;
 
-        assert!(matches!(
+        assert_err!(
             client.remove_track_child(child1, 0).await,
-            Err(Error::IndexOutOfBounds)
-        ));
+            ErrorKind::IndexOutOfBounds
+        );
 
         client.remove_track_child(root, 0).await?;
         assert_eq!(client.get_track_children(root).await?, vec![child2]);

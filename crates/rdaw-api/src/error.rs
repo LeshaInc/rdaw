@@ -266,3 +266,13 @@ impl<T, E: std::error::Error> ResultExt<T, E> for Result<T, E> {
         }
     }
 }
+
+#[macro_export]
+macro_rules! assert_err {
+    ($res:expr, $kind:expr $(,)?) => {
+        match $res {
+            Ok(_) => panic!("expected error {:?}", $kind),
+            Err(e) => assert_eq!(e.kind(), $kind),
+        }
+    };
+}

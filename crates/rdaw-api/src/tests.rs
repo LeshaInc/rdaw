@@ -4,7 +4,7 @@ use futures::FutureExt;
 use rdaw_rpc::transport::{self, ServerTransport};
 use rdaw_rpc::{handler, operations, protocol, Client, ClientMessage};
 
-use crate::{Error, Result};
+use crate::{Error, ErrorKind, Result};
 
 #[operations(protocol = TestProtocol)]
 trait FooOperations {
@@ -43,7 +43,7 @@ impl TestBackend {
         loop {
             match transport.recv().await {
                 Ok(msg) => self.handle_message(transport.clone(), msg).await?,
-                Err(Error::Disconnected) => return Ok(()),
+                Err(e) if e.kind() == ErrorKind::Disconnected => return Ok(()),
                 Err(e) => return Err(e),
             }
         }
