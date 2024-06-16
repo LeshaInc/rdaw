@@ -28,6 +28,7 @@ pub struct Document {
 impl Document {
     pub fn new() -> Result<Document> {
         let db = Database::new()?;
+
         Ok(Document {
             db: Arc::new(Mutex::new(db)),
             path: None,
@@ -67,6 +68,10 @@ impl Document {
         let db = self.db.lock().unwrap();
         let revisions = db.revisions()?;
         Ok(revisions)
+    }
+
+    pub fn last_revision(&self) -> Result<Option<(RevisionId, DocumentRevision)>> {
+        self.revisions().map(|mut v| v.pop()) // TODO: don't get all of them
     }
 
     pub fn create_blob(&self, compression: Compression) -> Result<BlobWriter> {
@@ -121,6 +126,7 @@ pub struct RevisionId(pub u64);
 pub struct DocumentRevision {
     pub created_at: DateTime<Utc>,
     pub time_spent_secs: u64,
+    pub arrangement_uuid: Uuid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

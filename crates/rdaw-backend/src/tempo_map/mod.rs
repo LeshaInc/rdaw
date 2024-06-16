@@ -1,3 +1,5 @@
+mod encoding;
+
 use rdaw_api::tempo_map::TempoMapId;
 use rdaw_api::time::{BeatTime, Time};
 use rdaw_api::Result;
@@ -50,11 +52,11 @@ impl Object for TempoMap {
 
     const TYPE: ObjectType = ObjectType::TempoMap;
 
-    fn serialize(&self, _ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
-        todo!()
+    fn serialize(&self, ctx: &mut SerializationContext<'_>) -> Result<Vec<u8>> {
+        self::encoding::serialize(ctx, self)
     }
 
-    fn deserialize(_ctx: &mut DeserializationContext<'_>, _data: &[u8]) -> Result<Self> {
-        todo!()
+    fn deserialize(ctx: &mut DeserializationContext<'_>, data: &[u8]) -> Result<Self> {
+        self::encoding::deserialize(ctx, data)
     }
 }

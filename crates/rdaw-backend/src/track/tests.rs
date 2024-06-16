@@ -14,7 +14,7 @@ fn list_tracks() -> Result<()> {
         let document_id = client.create_document().await?;
 
         let tracks = client.list_tracks().await?;
-        assert!(tracks.is_empty());
+        assert_eq!(tracks.len(), 1);
 
         let track1 = client.create_track(document_id).await?;
         let track2 = client.create_track(document_id).await?;
@@ -22,8 +22,8 @@ fn list_tracks() -> Result<()> {
 
         let mut tracks = client.list_tracks().await?;
         tracks.sort_unstable();
-        assert_eq!(tracks.len(), 2);
-        assert_eq!(tracks, vec![track1, track2]);
+        assert_eq!(tracks.len(), 3);
+        assert_eq!(tracks[1..], vec![track1, track2]);
 
         Ok(())
     })
@@ -121,7 +121,7 @@ fn get_set_track_name() -> Result<()> {
         );
 
         let track = client.create_track(document_id).await?;
-        assert_eq!(client.get_track_name(track).await?, "Track 1");
+        assert_eq!(client.get_track_name(track).await?, "Track 2");
         client.set_track_name(track, "New name".into()).await?;
         assert_eq!(client.get_track_name(track).await?, "New name");
 

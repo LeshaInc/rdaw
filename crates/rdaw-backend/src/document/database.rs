@@ -92,7 +92,8 @@ impl Database {
             CREATE TABLE revisions (
                 id INTEGER PRIMARY KEY ASC,
                 created_at TEXT NOT NULL,
-                time_spent INTEGER NOT NULL
+                time_spent INTEGER NOT NULL,
+                arrangement_uuid BLOB NOT NULL
             );
 
             CREATE TABLE blobs (
@@ -187,13 +188,14 @@ impl Database {
     pub fn revisions(&self) -> Result<Vec<(RevisionId, DocumentRevision)>> {
         let mut stmt = self
             .db
-            .prepare_cached("SELECT id, created_at, time_spent FROM revisions")?;
+            .prepare_cached("SELECT id, created_at, time_spent, arrangement_uuid FROM revisions")?;
 
         let iter = stmt.query_and_then([], |row| {
             let id = RevisionId(row.get(0)?);
             let revision = DocumentRevision {
                 created_at: row.get(1)?,
                 time_spent_secs: row.get(2)?,
+                arrangement_uuid: row.get(3)?,
             };
             Ok((id, revision))
         })?;
@@ -212,13 +214,14 @@ impl Database {
     }
 
     fn save_revision(&mut self, revision: DocumentRevision) -> Result<()> {
-        let mut stmt = self
-            .db
-            .prepare_cached("INSERT INTO revisions (created_at, time_spent) VALUES (?1, ?2)")?;
+        let mut stmt = self.db.prepare_cached(
+            "INSERT INTO revisions (created_at, time_spent, arrangement_uuid) VALUES (?1, ?2, ?3)",
+        )?;
 
         stmt.execute(rusqlite::params![
             revision.created_at,
-            revision.time_spent_secs
+            revision.time_spent_secs,
+            revision.arrangement_uuid
         ])?;
 
         self.next_revision.0 += 1;

@@ -20,6 +20,7 @@ fn save() -> Result<()> {
     let revision = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 15,
+        arrangement_uuid: Uuid::new_v4(),
     };
 
     doc.save(revision)?;
@@ -34,6 +35,7 @@ fn save_as() -> Result<()> {
     let revision = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 15,
+        arrangement_uuid: Uuid::new_v4(),
     };
 
     let copy_path = NamedTempFile::with_prefix(".rdaw-test-")?.into_temp_path();
@@ -52,12 +54,14 @@ fn revisions() -> Result<()> {
     let revision_1 = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 15,
+        arrangement_uuid: Uuid::new_v4(),
     };
     doc.save(revision_1)?;
 
     let revision_2 = DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 30,
+        arrangement_uuid: Uuid::new_v4(),
     };
     doc.save(revision_2)?;
 
@@ -147,6 +151,7 @@ fn write_object() -> Result<()> {
     doc.save(DocumentRevision {
         created_at: Utc::now(),
         time_spent_secs: 1,
+        arrangement_uuid: Uuid::new_v4(),
     })?;
 
     let mut writer = doc.create_blob(Compression::None)?;

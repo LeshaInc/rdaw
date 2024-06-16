@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use floem::ext_event::{create_ext_action, register_ext_trigger};
 use floem::keyboard::{Key, Modifiers, NamedKey};
-use floem::reactive::{provide_context, use_context, with_scope, Scope};
-use floem::views::Decorators;
+use floem::reactive::{provide_context, use_context, with_scope, RwSignal, Scope};
+use floem::views::{dyn_container, Decorators};
 use floem::{IntoView, View};
 use futures::executor::{block_on, ThreadPool};
 use futures::task::SpawnExt;
@@ -101,18 +101,42 @@ pub fn run(backend: Arc<dyn Backend>) {
 
     let (document_id, main_arrangement) = block_on(async move {
         let document_id = backend.create_document().await?;
-        let main_arrangement = backend.create_arrangement(document_id).await?;
+        let main_arrangement = backend.get_document_arrangement(document_id).await?;
         Ok::<_, Error>((document_id, main_arrangement))
     })
     .unwrap();
 
     floem::launch(move || {
-        let view = app_view(document_id, main_arrangement)
+        let state = RwSignal::new((document_id, main_arrangement));
+
+        let view = dyn_container(move || state.get(), move |(doc, arr)| app_view(doc, arr))
+            .style(|s| s.width_full().height_full())
             .keyboard_navigatable()
             .into_view();
+
         let id = view.id();
+
         view.on_key_down(Key::Named(NamedKey::F11), Modifiers::empty(), move |_| {
             id.inspect()
+        })
+        .on_key_down(Key::Named(NamedKey::F1), Modifiers::empty(), move |_| {
+            api::call(
+                move |api| async move {
+                    api.save_document_as(document_id, "/tmp/test.rdaw".into())
+                        .await
+                },
+                drop,
+            );
+        })
+        .on_key_down(Key::Named(NamedKey::F2), Modifiers::empty(), move |_| {
+            api::call(
+                move |api| async move {
+                    let document_id = api.open_document("/tmp/test.rdaw".into()).await?;
+                    let arrangement_id = api.get_document_arrangement(document_id).await?;
+                    Ok((document_id, arrangement_id))
+                },
+                move |new_state| state.set(new_state),
+            );
         })
     });
 }

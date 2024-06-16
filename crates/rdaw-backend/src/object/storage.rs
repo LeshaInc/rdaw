@@ -155,12 +155,12 @@ impl<T: Object> Storage<T> {
         }
     }
 
-    pub fn clear_dirty(&mut self, id: T::Id) {
-        self.dirty_set.remove(&id);
+    pub fn is_dirty(&self, id: T::Id) -> bool {
+        self.dirty_set.contains(&id)
     }
 
-    pub fn iter_dirty(&self) -> impl Iterator<Item = T::Id> + '_ {
-        self.dirty_set.iter().copied()
+    pub fn clear_all_dirty(&mut self) {
+        self.dirty_set.clear();
     }
 }
 
