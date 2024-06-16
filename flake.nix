@@ -47,7 +47,7 @@
             "-Zthreads=0"
           ];
           RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
-          RUST_LOG = "warn,rdaw=trace";
+          RUST_LOG = "warn,rdaw=debug,wgpu=error";
           RUST_BACKTRACE = 1;
         };
       }

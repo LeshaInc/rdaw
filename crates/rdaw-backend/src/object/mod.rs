@@ -34,17 +34,18 @@ pub trait ObjectId: slotmap::Key {
     type Object: Object<Id = Self>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Metadata {
-    pub uuid: Uuid,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ObjectKey {
     pub document_id: DocumentId,
+    pub uuid: Uuid,
 }
 
-impl Metadata {
-    pub fn new(document_id: DocumentId) -> Metadata {
-        Metadata {
-            uuid: Uuid::new_v4(),
-            document_id,
-        }
+impl ObjectKey {
+    pub fn new(document_id: DocumentId, uuid: Uuid) -> ObjectKey {
+        ObjectKey { document_id, uuid }
+    }
+
+    pub fn new_random(document_id: DocumentId) -> ObjectKey {
+        ObjectKey::new(document_id, Uuid::new_v4())
     }
 }

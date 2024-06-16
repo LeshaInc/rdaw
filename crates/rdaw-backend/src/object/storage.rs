@@ -2,21 +2,20 @@ use std::ops::{Index, IndexMut};
 
 use rdaw_api::{bail, format_err, Error, ErrorKind, Result};
 use rdaw_core::collections::{HashMap, HashSet};
-use rdaw_core::Uuid;
 use slotmap::SlotMap;
 
-use super::{Metadata, Object, ObjectId};
+use super::{Object, ObjectId, ObjectKey};
 
 #[derive(Debug)]
 pub struct Storage<T: Object> {
     map: SlotMap<T::Id, Entry<T>>,
     dirty_set: HashSet<T::Id>,
-    uuid_to_id: HashMap<Uuid, T::Id>,
+    key_to_id: HashMap<ObjectKey, T::Id>,
 }
 
 #[derive(Debug)]
 struct Entry<T> {
-    metadata: Metadata,
+    key: ObjectKey,
     object: Option<T>,
 }
 
@@ -25,18 +24,13 @@ impl<T: Object> Storage<T> {
         Storage {
             map: SlotMap::default(),
             dirty_set: HashSet::default(),
-            uuid_to_id: HashMap::default(),
+            key_to_id: HashMap::default(),
         }
     }
 
-    pub fn prepare_insert(&mut self, metadata: Metadata) -> T::Id {
-        let id = self.map.insert(Entry {
-            metadata,
-            object: None,
-        });
-
-        self.uuid_to_id.insert(metadata.uuid, id);
-
+    pub fn prepare_insert(&mut self, key: ObjectKey) -> T::Id {
+        let id = self.map.insert(Entry { key, object: None });
+        self.key_to_id.insert(key, id);
         id
     }
 
@@ -45,14 +39,14 @@ impl<T: Object> Storage<T> {
         self.dirty_set.insert(id);
     }
 
-    pub fn insert(&mut self, metadata: Metadata, object: T) -> T::Id {
+    pub fn insert(&mut self, key: ObjectKey, object: T) -> T::Id {
         let id = self.map.insert(Entry {
-            metadata,
+            key,
             object: Some(object),
         });
 
         self.dirty_set.insert(id);
-        self.uuid_to_id.insert(metadata.uuid, id);
+        self.key_to_id.insert(key, id);
 
         id
     }
@@ -119,34 +113,34 @@ impl<T: Object> Storage<T> {
         Ok(arr.map(|v| v.object.as_mut().unwrap()))
     }
 
-    pub fn get_metadata(&self, id: T::Id) -> Option<&Metadata> {
-        self.map.get(id).map(|v| &v.metadata)
+    pub fn get_key(&self, id: T::Id) -> Option<&ObjectKey> {
+        self.map.get(id).map(|v| &v.key)
     }
 
     #[track_caller]
-    pub fn get_metadata_or_err(&self, id: T::Id) -> Result<&Metadata> {
-        match self.map.get(id).map(|v| &v.metadata) {
+    pub fn get_key_or_err(&self, id: T::Id) -> Result<&ObjectKey> {
+        match self.map.get(id).map(|v| &v.key) {
             Some(v) => Ok(v),
             None => Err(err_invalid_id(id)),
         }
     }
 
-    pub fn lookup_uuid(&self, uuid: Uuid) -> Option<T::Id> {
-        self.uuid_to_id.get(&uuid).copied()
+    pub fn get_id(&self, key: ObjectKey) -> Option<T::Id> {
+        self.key_to_id.get(&key).copied()
     }
 
     #[track_caller]
-    pub fn lookup_uuid_or_err(&self, uuid: Uuid) -> Result<T::Id> {
-        match self.lookup_uuid(uuid) {
+    pub fn get_id_or_err(&self, key: ObjectKey) -> Result<T::Id> {
+        match self.get_id(key) {
             Some(v) => Ok(v),
-            None => Err(err_invalid_uuid(uuid)),
+            None => Err(err_invalid_key(key)),
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (T::Id, &Metadata, &T)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (T::Id, &ObjectKey, &T)> + '_ {
         self.map
             .iter()
-            .flat_map(|(id, entry)| entry.object.as_ref().map(|obj| (id, &entry.metadata, obj)))
+            .flat_map(|(id, entry)| entry.object.as_ref().map(|obj| (id, &entry.key, obj)))
     }
 
     pub fn mark_dirty(&mut self, id: T::Id) {
@@ -160,7 +154,7 @@ impl<T: Object> Storage<T> {
     }
 
     pub fn clear_all_dirty(&mut self) {
-        self.dirty_set.clear();
+        self.dirty_set.clear()
     }
 }
 
@@ -190,6 +184,11 @@ fn err_invalid_id<I: ObjectId>(id: I) -> Error {
 }
 
 #[track_caller]
-fn err_invalid_uuid(uuid: Uuid) -> Error {
-    format_err!(ErrorKind::InvalidId, "{uuid} doesn't exist")
+fn err_invalid_key(key: ObjectKey) -> Error {
+    format_err!(
+        ErrorKind::InvalidId,
+        "object {} doesn't exist in {:?}",
+        key.uuid,
+        key.document_id
+    )
 }

@@ -10,23 +10,26 @@ use slotmap::Key;
 use tracing::instrument;
 
 use super::Track;
-use crate::object::Metadata;
+use crate::object::ObjectKey;
 use crate::Backend;
 
 #[rdaw_rpc::handler(protocol = BackendProtocol, operations = TrackOperations)]
 impl Backend {
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn list_tracks(&self) -> Result<Vec<TrackId>> {
         let tracks = self.hub.tracks.iter().map(|(id, _, _)| id).collect();
         Ok(tracks)
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn create_track(&mut self, document_id: DocumentId) -> Result<TrackId> {
         let track = Track::new(String::new());
-        let id = self.hub.tracks.insert(Metadata::new(document_id), track);
+        let id = self
+            .hub
+            .tracks
+            .insert(ObjectKey::new_random(document_id), track);
 
         let mut id_str = format!("{:?}", id.data());
         if let Some(v) = id_str.find('v') {
@@ -38,21 +41,21 @@ impl Backend {
         Ok(id)
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn subscribe_track(&mut self, id: TrackId) -> Result<StreamId> {
         self.hub.tracks.ensure_has(id)?;
         Ok(self.subscribers.track.subscribe(id))
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn subscribe_track_hierarchy(&mut self, id: TrackId) -> Result<StreamId> {
         self.hub.tracks.ensure_has(id)?;
         Ok(self.subscribers.track_hierarchy.subscribe(id))
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn subscribe_track_view(&mut self, id: TrackViewId) -> Result<StreamId> {
         self.hub.arrangements.ensure_has(id.arrangement_id)?;
@@ -60,14 +63,14 @@ impl Backend {
         Ok(self.subscribers.track_view.subscribe(id))
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn get_track_name(&self, id: TrackId) -> Result<String> {
         let track = self.hub.tracks.get_or_err(id)?;
         Ok(track.name.clone())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
         let track = self.hub.tracks.get_mut_or_err(id)?;
@@ -79,14 +82,14 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn get_track_children(&self, id: TrackId) -> Result<Vec<TrackId>> {
         let track = self.hub.tracks.get_or_err(id)?;
         Ok(track.links.children.clone())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn get_track_hierarchy(&self, id: TrackId) -> Result<TrackHierarchy> {
         let mut hierarchy = TrackHierarchy::new(id);
@@ -104,6 +107,29 @@ impl Backend {
         Ok(hierarchy)
     }
 
+    pub fn recompute_track_hierarchy(&mut self, root_id: TrackId) {
+        self.track_dfs(root_id, |this, track_id, _| {
+            let Some(track) = this.hub.tracks.get_mut(track_id) else {
+                return;
+            };
+
+            track.links.ancestors.clear();
+            track.links.direct_ancestors.clear();
+        });
+
+        self.track_dfs(root_id, |this, track_id, parent_id| {
+            let Some(track) = this.hub.tracks.get_mut(track_id) else {
+                return;
+            };
+
+            if let Some(parent_id) = parent_id {
+                track.links.direct_ancestors.insert(parent_id);
+            };
+        });
+
+        self.recompute_track_ancestors(root_id);
+    }
+
     fn notify_track_child_change(&mut self, id: TrackId) {
         let track = &self.hub.tracks[id];
         let new_children = track.links.children.iter().copied().collect();
@@ -119,24 +145,33 @@ impl Backend {
         self.subscribers.track_hierarchy.notify(id, event);
     }
 
-    fn track_dfs(&mut self, root_id: TrackId, mut callback: impl FnMut(&mut Self, TrackId)) {
-        self.track_dfs_inner(root_id, &mut callback)
+    fn track_dfs(
+        &mut self,
+        root_id: TrackId,
+        mut callback: impl FnMut(&mut Self, TrackId, Option<TrackId>),
+    ) {
+        self.track_dfs_inner(root_id, None, &mut callback)
     }
 
-    fn track_dfs_inner(&mut self, root_id: TrackId, callback: &mut impl FnMut(&mut Self, TrackId)) {
-        callback(self, root_id);
+    fn track_dfs_inner(
+        &mut self,
+        root_id: TrackId,
+        parent_id: Option<TrackId>,
+        callback: &mut impl FnMut(&mut Self, TrackId, Option<TrackId>),
+    ) {
+        callback(self, root_id, parent_id);
 
         let children = std::mem::take(&mut self.hub.tracks[root_id].links.children);
 
         for &child_id in &children {
-            self.track_dfs_inner(child_id, callback);
+            self.track_dfs_inner(child_id, Some(root_id), callback);
         }
 
         self.hub.tracks[root_id].links.children = children;
     }
 
-    fn recompute_ancestors(&mut self, root_id: TrackId) {
-        self.track_dfs(root_id, |this, track_id| {
+    fn recompute_track_ancestors(&mut self, root_id: TrackId) {
+        self.track_dfs(root_id, |this, track_id, _| {
             if !this.hub.tracks.has(track_id) {
                 return;
             }
@@ -170,7 +205,7 @@ impl Backend {
         };
 
         track.links.direct_ancestors.insert(ancestor_id);
-        self.recompute_ancestors(track_id);
+        self.recompute_track_ancestors(track_id);
     }
 
     fn remove_track_ancestor(&mut self, track_id: TrackId, ancestor_id: TrackId) {
@@ -179,20 +214,29 @@ impl Backend {
         };
 
         track.links.direct_ancestors.remove(&ancestor_id);
-        self.recompute_ancestors(track_id);
+        self.recompute_track_ancestors(track_id);
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn append_track_child(&mut self, parent_id: TrackId, child_id: TrackId) -> Result<()> {
         let track = self.hub.tracks.get_or_err(parent_id)?;
         let index = track.links.children.len();
-        self.insert_track_child(parent_id, child_id, index)
+        self.insert_track_child_inner(parent_id, child_id, index)
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn insert_track_child(
+        &mut self,
+        parent_id: TrackId,
+        child_id: TrackId,
+        index: usize,
+    ) -> Result<()> {
+        self.insert_track_child_inner(parent_id, child_id, index)
+    }
+
+    fn insert_track_child_inner(
         &mut self,
         parent_id: TrackId,
         child_id: TrackId,
@@ -231,7 +275,7 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn move_track(
         &mut self,
@@ -326,7 +370,7 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn remove_track_child(&mut self, parent_id: TrackId, index: usize) -> Result<()> {
         let parent = self.hub.tracks.get_mut_or_err(parent_id)?;
@@ -349,7 +393,7 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn add_track_item(&mut self, track_id: TrackId, item: TrackItem) -> Result<TrackItemId> {
         let track = self.hub.tracks.get_mut_or_err(track_id)?;
@@ -369,7 +413,7 @@ impl Backend {
         Ok(item_id)
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn get_track_item(&self, track_id: TrackId, item_id: TrackItemId) -> Result<TrackItem> {
         let track = self.hub.tracks.get_or_err(track_id)?;
@@ -381,7 +425,7 @@ impl Backend {
         })
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn remove_track_item(&mut self, track_id: TrackId, item_id: TrackItemId) -> Result<()> {
         let track = self.hub.tracks.get_mut_or_err(track_id)?;
@@ -399,7 +443,7 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn move_track_item(
         &mut self,
@@ -432,7 +476,7 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn resize_track_item(
         &mut self,
@@ -465,7 +509,7 @@ impl Backend {
         Ok(())
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn get_track_view_item(
         &mut self,
@@ -485,7 +529,7 @@ impl Backend {
         })
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn get_track_view_range(
         &mut self,

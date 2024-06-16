@@ -3,9 +3,9 @@ use std::io::{Read, Write};
 use rdaw_api::document::DocumentId;
 use rdaw_api::{bail, format_err, ErrorKind, Result};
 use rdaw_core::Uuid;
-use slotmap::SlotMap;
+use slotmap::{KeyData, SlotMap};
 
-use super::{Hub, Metadata, Object, ObjectId, ObjectType, StorageRef};
+use super::{Hub, Object, ObjectId, ObjectKey, ObjectType, StorageRef};
 use crate::arrangement::Arrangement;
 use crate::blob::Blob;
 use crate::document::{Compression, Document};
@@ -16,9 +16,10 @@ use crate::track::Track;
 
 #[derive(Debug)]
 pub struct SerializationContext<'a> {
+    document_id: DocumentId,
     documents: SlotMap<DocumentId, Document>,
     hub: &'a Hub,
-    deps: Vec<(ObjectType, Uuid)>,
+    deps: Vec<(ObjectType, Uuid, KeyData)>,
 }
 
 impl SerializationContext<'_> {
@@ -26,7 +27,13 @@ impl SerializationContext<'_> {
     where
         I::Object: StorageRef,
     {
+        let document_id = hub
+            .storage::<I::Object>()
+            .get_key_or_err(root_id)?
+            .document_id;
+
         let mut ctx = SerializationContext {
+            document_id,
             documents: std::mem::take(&mut hub.documents),
             hub,
             deps: Vec::new(),
@@ -46,43 +53,35 @@ impl SerializationContext<'_> {
         I::Object: StorageRef,
     {
         let storage = self.hub.storage::<I::Object>();
-        let metadata = storage.get_metadata_or_err(id)?;
-        self.deps.push((I::Object::TYPE, metadata.uuid));
-        Ok(metadata.uuid)
+        let key = storage.get_key_or_err(id)?;
+        self.deps.push((I::Object::TYPE, key.uuid, id.data()));
+        Ok(key.uuid)
     }
 
     fn serialize_loop(&mut self) -> Result<()> {
-        while let Some((ty, uuid)) = self.deps.pop() {
-            dbg!(ty, uuid);
+        while let Some((ty, uuid, id)) = self.deps.pop() {
             match ty {
-                ObjectType::AudioItem => self.serialize_obj::<AudioItem>(uuid)?,
-                ObjectType::AudioSource => self.serialize_obj::<AudioSource>(uuid)?,
-                ObjectType::Track => self.serialize_obj::<Track>(uuid)?,
-                ObjectType::Arrangement => self.serialize_obj::<Arrangement>(uuid)?,
-                ObjectType::TempoMap => self.serialize_obj::<TempoMap>(uuid)?,
-                ObjectType::Blob => self.serialize_obj::<Blob>(uuid)?,
+                ObjectType::AudioItem => self.serialize_obj::<AudioItem>(uuid, id.into())?,
+                ObjectType::AudioSource => self.serialize_obj::<AudioSource>(uuid, id.into())?,
+                ObjectType::Track => self.serialize_obj::<Track>(uuid, id.into())?,
+                ObjectType::Arrangement => self.serialize_obj::<Arrangement>(uuid, id.into())?,
+                ObjectType::TempoMap => self.serialize_obj::<TempoMap>(uuid, id.into())?,
+                ObjectType::Blob => self.serialize_obj::<Blob>(uuid, id.into())?,
             }
         }
 
         Ok(())
     }
 
-    fn serialize_obj<T: Object + StorageRef>(&mut self, uuid: Uuid) -> Result<()> {
+    fn serialize_obj<T: Object + StorageRef>(&mut self, uuid: Uuid, id: T::Id) -> Result<()> {
         let storage = self.hub.storage::<T>();
-        let id = storage.lookup_uuid_or_err(uuid)?;
-
-        // if !storage.is_dirty(id) {
-        //     return Ok(());
-        // }
-
         let object = storage.get_or_err(id)?;
         let data = object.serialize(self)?;
 
-        let document_id = storage.get_metadata_or_err(id)?.document_id;
         let document = self
             .documents
-            .get(document_id)
-            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {document_id:?}"))?;
+            .get(self.document_id)
+            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {:?}", self.document_id))?;
 
         let mut blob = document.create_blob(Compression::None)?;
         blob.write_all(&data)?;
@@ -99,7 +98,7 @@ pub struct DeserializationContext<'a> {
     documents: SlotMap<DocumentId, Document>,
     document_id: DocumentId,
     hub: &'a mut Hub,
-    deps: Vec<(ObjectType, Uuid)>,
+    deps: Vec<(ObjectType, Uuid, KeyData)>,
 }
 
 impl DeserializationContext<'_> {
@@ -130,41 +129,35 @@ impl DeserializationContext<'_> {
     where
         I::Object: StorageRef,
     {
-        self.deps.push((I::Object::TYPE, uuid));
-
         let storage = self.hub.storage_mut::<I::Object>();
-        if let Some(id) = storage.lookup_uuid(uuid) {
+        let key = ObjectKey::new(self.document_id, uuid);
+
+        if let Some(id) = storage.get_id(key) {
             return Ok(id);
         }
 
-        let metadata = Metadata {
-            uuid,
-            document_id: self.document_id,
-        };
-        let id = storage.prepare_insert(metadata);
+        let id = storage.prepare_insert(key);
+        self.deps.push((I::Object::TYPE, uuid, id.data()));
 
         Ok(id)
     }
 
     fn deserialize_loop(&mut self) -> Result<()> {
-        while let Some((ty, uuid)) = self.deps.pop() {
+        while let Some((ty, uuid, id)) = self.deps.pop() {
             match ty {
-                ObjectType::AudioItem => self.deserialize_obj::<AudioItem>(uuid)?,
-                ObjectType::AudioSource => self.deserialize_obj::<AudioSource>(uuid)?,
-                ObjectType::Track => self.deserialize_obj::<Track>(uuid)?,
-                ObjectType::Arrangement => self.deserialize_obj::<Arrangement>(uuid)?,
-                ObjectType::TempoMap => self.deserialize_obj::<TempoMap>(uuid)?,
-                ObjectType::Blob => self.deserialize_obj::<Blob>(uuid)?,
+                ObjectType::AudioItem => self.deserialize_obj::<AudioItem>(uuid, id.into())?,
+                ObjectType::AudioSource => self.deserialize_obj::<AudioSource>(uuid, id.into())?,
+                ObjectType::Track => self.deserialize_obj::<Track>(uuid, id.into())?,
+                ObjectType::Arrangement => self.deserialize_obj::<Arrangement>(uuid, id.into())?,
+                ObjectType::TempoMap => self.deserialize_obj::<TempoMap>(uuid, id.into())?,
+                ObjectType::Blob => self.deserialize_obj::<Blob>(uuid, id.into())?,
             }
         }
 
         Ok(())
     }
 
-    fn deserialize_obj<T: Object + StorageRef>(&mut self, uuid: Uuid) -> Result<()> {
-        let storage = self.hub.storage::<T>();
-        let id = storage.lookup_uuid_or_err(uuid)?;
-
+    fn deserialize_obj<T: Object + StorageRef>(&mut self, uuid: Uuid, id: T::Id) -> Result<()> {
         let document = self
             .documents
             .get(self.document_id)

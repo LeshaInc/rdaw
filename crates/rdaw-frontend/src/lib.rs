@@ -120,6 +120,7 @@ pub fn run(backend: Arc<dyn Backend>) {
             id.inspect()
         })
         .on_key_down(Key::Named(NamedKey::F1), Modifiers::empty(), move |_| {
+            let document_id = state.get().0;
             api::call(
                 move |api| async move {
                     api.save_document_as(document_id, "/tmp/test.rdaw".into())

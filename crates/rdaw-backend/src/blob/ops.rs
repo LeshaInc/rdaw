@@ -6,12 +6,12 @@ use rdaw_api::{BackendProtocol, Error, Result};
 use tracing::instrument;
 
 use super::Blob;
-use crate::object::Metadata;
+use crate::object::ObjectKey;
 use crate::Backend;
 
 #[rdaw_rpc::handler(protocol = BackendProtocol, operations = BlobOperations)]
 impl Backend {
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn create_internal_blob(
         &mut self,
@@ -22,12 +22,15 @@ impl Backend {
         self.blob_cache.insert(hash, data);
 
         let blob = Blob::Internal { hash };
-        let id = self.hub.blobs.insert(Metadata::new(document_id), blob);
+        let id = self
+            .hub
+            .blobs
+            .insert(ObjectKey::new_random(document_id), blob);
 
         Ok(id)
     }
 
-    #[instrument(skip_all, err)]
+    #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn create_external_blob(
         &mut self,
@@ -42,7 +45,10 @@ impl Backend {
         self.blob_cache.insert(hash, data);
 
         let blob = Blob::External { hash, path };
-        let id = self.hub.blobs.insert(Metadata::new(document_id), blob);
+        let id = self
+            .hub
+            .blobs
+            .insert(ObjectKey::new_random(document_id), blob);
 
         Ok(id)
     }

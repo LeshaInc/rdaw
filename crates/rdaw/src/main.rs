@@ -5,14 +5,20 @@ use futures::executor::block_on;
 use rdaw_backend::Backend;
 use rdaw_rpc::{transport, Client};
 use tracing_error::ErrorLayer;
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 fn main() {
-    let subscriber = tracing_subscriber::fmt()
-        .finish()
-        .with(ErrorLayer::default());
+    let subscriber = fmt::layer()
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .with_filter(EnvFilter::from_default_env());
 
-    tracing::subscriber::set_global_default(subscriber).unwrap();
+    tracing_subscriber::registry()
+        .with(subscriber)
+        .with(ErrorLayer::default())
+        .init();
 
     let (client_transport, server_transport) = transport::local(None);
 
