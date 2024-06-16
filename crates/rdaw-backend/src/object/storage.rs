@@ -187,7 +187,7 @@ fn err_invalid_id<I: ObjectId>(id: I) -> Error {
 fn err_invalid_key(key: ObjectKey) -> Error {
     format_err!(
         ErrorKind::InvalidId,
-        "object {} doesn't exist in {:?}",
+        "{} doesn't exist in {:?}",
         key.uuid,
         key.document_id
     )

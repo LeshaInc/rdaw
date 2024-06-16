@@ -1,19 +1,16 @@
 use std::sync::Arc;
 
 use rdaw_api::arrangement::{ArrangementEvent, ArrangementEvents, ArrangementId};
-use rdaw_api::document::DocumentId;
 use rdaw_api::track::{
     TrackEvent, TrackEvents, TrackHierarchyEvent, TrackId, TrackViewEvent, TrackViewId,
 };
 use rdaw_api::{BackendProtocol, Result};
 use rdaw_rpc::transport::ServerTransport;
 use rdaw_rpc::{StreamId, StreamIdAllocator, Subscribers};
-use slotmap::SlotMap;
 
 use super::{Object, Storage};
 use crate::arrangement::Arrangement;
 use crate::blob::Blob;
-use crate::document::Document;
 use crate::item::AudioItem;
 use crate::source::AudioSource;
 use crate::tempo_map::TempoMap;
@@ -21,8 +18,6 @@ use crate::track::Track;
 
 #[derive(Debug, Default)]
 pub struct Hub {
-    pub documents: SlotMap<DocumentId, Document>,
-
     pub arrangements: Storage<Arrangement>,
     pub audio_items: Storage<AudioItem>,
     pub audio_sources: Storage<AudioSource>,

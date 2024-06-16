@@ -1,14 +1,14 @@
 use std::io::{Read, Write};
 
 use rdaw_api::document::DocumentId;
-use rdaw_api::{bail, format_err, ErrorKind, Result};
+use rdaw_api::{bail, ErrorKind, Result};
 use rdaw_core::Uuid;
-use slotmap::{KeyData, SlotMap};
+use slotmap::KeyData;
 
 use super::{Hub, Object, ObjectId, ObjectKey, ObjectType, StorageRef};
 use crate::arrangement::Arrangement;
 use crate::blob::Blob;
-use crate::document::{Compression, Document};
+use crate::document::{Compression, DocumentStorage};
 use crate::item::AudioItem;
 use crate::source::AudioSource;
 use crate::tempo_map::TempoMap;
@@ -16,14 +16,18 @@ use crate::track::Track;
 
 #[derive(Debug)]
 pub struct SerializationContext<'a> {
-    document_id: DocumentId,
-    documents: SlotMap<DocumentId, Document>,
     hub: &'a Hub,
+    documents: &'a DocumentStorage,
+    document_id: DocumentId,
     deps: Vec<(ObjectType, Uuid, KeyData)>,
 }
 
 impl SerializationContext<'_> {
-    pub fn serialize<I: ObjectId>(hub: &mut Hub, root_id: I) -> Result<Uuid>
+    pub fn serialize<I: ObjectId>(
+        hub: &mut Hub,
+        documents: &DocumentStorage,
+        root_id: I,
+    ) -> Result<Uuid>
     where
         I::Object: StorageRef,
     {
@@ -33,19 +37,16 @@ impl SerializationContext<'_> {
             .document_id;
 
         let mut ctx = SerializationContext {
-            document_id,
-            documents: std::mem::take(&mut hub.documents),
             hub,
+            documents,
+            document_id,
             deps: Vec::new(),
         };
 
-        let uuid = ctx.add_dep(root_id)?;
-
+        let root_uuid = ctx.add_dep(root_id)?;
         ctx.serialize_loop()?;
 
-        std::mem::swap(&mut ctx.documents, &mut hub.documents);
-
-        Ok(uuid)
+        Ok(root_uuid)
     }
 
     pub fn add_dep<I: ObjectId>(&mut self, id: I) -> Result<Uuid>
@@ -78,10 +79,7 @@ impl SerializationContext<'_> {
         let object = storage.get_or_err(id)?;
         let data = object.serialize(self)?;
 
-        let document = self
-            .documents
-            .get(self.document_id)
-            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {:?}", self.document_id))?;
+        let document = self.documents.get_or_err(self.document_id)?;
 
         let mut blob = document.create_blob(Compression::None)?;
         blob.write_all(&data)?;
@@ -95,15 +93,16 @@ impl SerializationContext<'_> {
 
 #[derive(Debug)]
 pub struct DeserializationContext<'a> {
-    documents: SlotMap<DocumentId, Document>,
-    document_id: DocumentId,
     hub: &'a mut Hub,
+    documents: &'a DocumentStorage,
+    document_id: DocumentId,
     deps: Vec<(ObjectType, Uuid, KeyData)>,
 }
 
 impl DeserializationContext<'_> {
     pub fn deserialize<I: ObjectId>(
         hub: &mut Hub,
+        documents: &DocumentStorage,
         document_id: DocumentId,
         root_uuid: Uuid,
     ) -> Result<I>
@@ -111,16 +110,14 @@ impl DeserializationContext<'_> {
         I::Object: StorageRef,
     {
         let mut ctx = DeserializationContext {
-            documents: std::mem::take(&mut hub.documents),
-            document_id,
             hub,
+            documents,
+            document_id,
             deps: Vec::new(),
         };
 
         let root_id = ctx.add_dep::<I>(root_uuid)?;
         ctx.deserialize_loop()?;
-
-        std::mem::swap(&mut ctx.documents, &mut hub.documents);
 
         Ok(root_id)
     }
@@ -158,10 +155,7 @@ impl DeserializationContext<'_> {
     }
 
     fn deserialize_obj<T: Object + StorageRef>(&mut self, uuid: Uuid, id: T::Id) -> Result<()> {
-        let document = self
-            .documents
-            .get(self.document_id)
-            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {:?}", self.document_id))?;
+        let document = self.documents.get_or_err(self.document_id)?;
 
         let Some(revision) = document.read_object(uuid)? else {
             bail!(

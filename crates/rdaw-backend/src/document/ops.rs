@@ -14,12 +14,12 @@ impl Backend {
     #[handler]
     pub fn create_document(&mut self) -> Result<DocumentId> {
         let document = Document::new()?;
-        let document_id = self.hub.documents.insert(document);
+        let document_id = self.documents.insert(document);
 
         let arrangement_id = self.create_arrangement(document_id)?;
         let arrangement_uuid = self.hub.arrangements.get_key_or_err(arrangement_id)?.uuid;
 
-        let document = &self.hub.documents[document_id];
+        let document = &self.documents[document_id];
         document.save(DocumentRevision {
             created_at: Utc::now(),
             time_spent_secs: 0,
@@ -38,10 +38,11 @@ impl Backend {
             .last_revision()?
             .ok_or_else(|| format_err!(ErrorKind::Other, "document doesn't have any revisions"))?;
 
-        let document_id = self.hub.documents.insert(document);
+        let document_id = self.documents.insert(document);
 
         DeserializationContext::deserialize::<ArrangementId>(
             &mut self.hub,
+            &self.documents,
             document_id,
             last_revision.arrangement_uuid,
         )?;
@@ -56,11 +57,7 @@ impl Backend {
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn save_document(&mut self, id: DocumentId) -> Result<()> {
-        let document = self
-            .hub
-            .documents
-            .get(id)
-            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {id:?}"))?;
+        let document = self.documents.get_or_err(id)?;
 
         let (_, last_revision) = document
             .last_revision()?
@@ -69,9 +66,9 @@ impl Backend {
         let arrangement_key = ObjectKey::new(id, last_revision.arrangement_uuid);
         let arrangement_id = self.hub.arrangements.get_id_or_err(arrangement_key)?;
 
-        SerializationContext::serialize(&mut self.hub, arrangement_id)?;
+        SerializationContext::serialize(&mut self.hub, &self.documents, arrangement_id)?;
 
-        let document = &self.hub.documents[id];
+        let document = &self.documents[id];
         document.save(DocumentRevision {
             created_at: Utc::now(),
             time_spent_secs: 0,
@@ -84,11 +81,7 @@ impl Backend {
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
     pub fn save_document_as(&mut self, id: DocumentId, path: String) -> Result<()> {
-        let document = self
-            .hub
-            .documents
-            .get(id)
-            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {id:?}"))?;
+        let document = self.documents.get_or_err(id)?;
 
         let (_, last_revision) = document
             .last_revision()?
@@ -97,9 +90,9 @@ impl Backend {
         let arrangement_key = ObjectKey::new(id, last_revision.arrangement_uuid);
         let arrangement_id = self.hub.arrangements.get_id_or_err(arrangement_key)?;
 
-        SerializationContext::serialize(&mut self.hub, arrangement_id)?;
+        SerializationContext::serialize(&mut self.hub, &self.documents, arrangement_id)?;
 
-        let document = &self.hub.documents[id];
+        let document = &self.documents[id];
         let new_document = document.save_as(
             path.as_ref(),
             DocumentRevision {
@@ -109,7 +102,7 @@ impl Backend {
             },
         )?;
 
-        self.hub.documents[id] = new_document;
+        self.documents[id] = new_document;
 
         Ok(())
     }
@@ -117,11 +110,7 @@ impl Backend {
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
     fn get_document_arrangement(&self, id: DocumentId) -> Result<ArrangementId> {
-        let document = self
-            .hub
-            .documents
-            .get(id)
-            .ok_or_else(|| format_err!(ErrorKind::InvalidId, "invalid {id:?}"))?;
+        let document = self.documents.get_or_err(id)?;
 
         let (_, last_revision) = document
             .last_revision()?

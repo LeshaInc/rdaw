@@ -3,6 +3,7 @@ mod compression;
 mod database;
 pub mod encoding;
 mod ops;
+mod storage;
 #[cfg(test)]
 mod tests;
 
@@ -18,6 +19,7 @@ use self::blob::{Blob, BlobChunk, BlobId};
 pub use self::blob::{BlobReader, BlobWriter};
 pub use self::compression::Compression;
 use self::database::Database;
+pub use self::storage::DocumentStorage;
 
 #[derive(Debug)]
 pub struct Document {

@@ -11,6 +11,7 @@ pub mod track;
 
 use std::sync::Arc;
 
+use document::DocumentStorage;
 use rdaw_api::{BackendProtocol, BackendRequest, ErrorKind, Result};
 use rdaw_rpc::transport::{LocalServerTransport, ServerTransport};
 use rdaw_rpc::{ClientMessage, StreamIdAllocator};
@@ -23,6 +24,7 @@ use self::track::TrackViewCache;
 pub struct Backend {
     transport: LocalServerTransport<BackendProtocol>,
 
+    documents: DocumentStorage,
     hub: Hub,
     subscribers: SubscribersHub,
 
@@ -37,6 +39,7 @@ impl Backend {
         Backend {
             transport,
 
+            documents: DocumentStorage::default(),
             hub: Hub::default(),
             subscribers: SubscribersHub::new(stream_id_allocator.clone()),
 
