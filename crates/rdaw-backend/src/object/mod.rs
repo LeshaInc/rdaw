@@ -12,12 +12,12 @@ pub use self::storage::Storage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjectType {
+    Arrangement,
+    Asset,
     AudioItem,
     AudioSource,
-    Track,
-    Arrangement,
     TempoMap,
-    Blob,
+    Track,
 }
 
 pub trait Object: Sized {

@@ -19,7 +19,7 @@ rdaw-ui-kit = { path = "crates/rdaw-ui-kit", version = "0.1.0" }
 ahash = "0.8.11"
 async-channel = "2.3"
 audio_thread_priority = "0.32.0"
-blake3 = "1.5"
+blake3 = { version = "1.5", features = ["mmap", "serde"] }
 bumpalo = "3.16"
 chrono = { version = "0.4.38", features = ["now"] }
 convert_case = "0.6.0"

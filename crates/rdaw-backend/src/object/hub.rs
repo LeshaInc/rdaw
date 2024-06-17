@@ -10,7 +10,7 @@ use rdaw_rpc::{StreamId, StreamIdAllocator, Subscribers};
 
 use super::{Object, Storage};
 use crate::arrangement::Arrangement;
-use crate::blob::Blob;
+use crate::asset::Asset;
 use crate::item::AudioItem;
 use crate::source::AudioSource;
 use crate::tempo_map::TempoMap;
@@ -19,9 +19,9 @@ use crate::track::Track;
 #[derive(Debug, Default)]
 pub struct Hub {
     pub arrangements: Storage<Arrangement>,
+    pub assets: Storage<Asset>,
     pub audio_items: Storage<AudioItem>,
     pub audio_sources: Storage<AudioSource>,
-    pub blobs: Storage<Blob>,
     pub tempo_maps: Storage<TempoMap>,
     pub tracks: Storage<Track>,
 }
@@ -57,9 +57,9 @@ macro_rules! impl_storage_ref {
 }
 
 impl_storage_ref!(arrangements: Arrangement);
+impl_storage_ref!(assets: Asset);
 impl_storage_ref!(audio_items: AudioItem);
 impl_storage_ref!(audio_sources: AudioSource);
-impl_storage_ref!(blobs: Blob);
 impl_storage_ref!(tempo_maps: TempoMap);
 impl_storage_ref!(tracks: Track);
 

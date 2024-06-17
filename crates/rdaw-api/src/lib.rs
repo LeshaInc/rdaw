@@ -1,8 +1,8 @@
 #![allow(clippy::type_complexity)]
 
 pub mod arrangement;
+pub mod asset;
 pub mod audio;
-pub mod blob;
 pub mod document;
 pub mod error;
 pub mod item;
@@ -22,8 +22,8 @@ pub use self::error::{Error, ErrorKind, Result};
 
 pub trait Backend:
     self::arrangement::ArrangementOperations
+    + self::asset::AssetOperations
     + self::source::AudioSourceOperations
-    + self::blob::BlobOperations
     + self::document::DocumentOperations
     + self::track::TrackOperations
     + Sync
@@ -33,8 +33,8 @@ pub trait Backend:
 
 impl<T> Backend for T where
     T: self::arrangement::ArrangementOperations
+        + self::asset::AssetOperations
         + self::source::AudioSourceOperations
-        + self::blob::BlobOperations
         + self::document::DocumentOperations
         + self::track::TrackOperations
         + Sync
@@ -47,8 +47,8 @@ pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 #[rdaw_rpc::protocol(
     operations(
         self::arrangement::ArrangementOperations,
+        self::asset::AssetOperations,
         self::source::AudioSourceOperations,
-        self::blob::BlobOperations,
         self::document::DocumentOperations,
         self::track::TrackOperations
     ),

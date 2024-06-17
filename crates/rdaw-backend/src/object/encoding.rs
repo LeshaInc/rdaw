@@ -7,7 +7,7 @@ use slotmap::KeyData;
 
 use super::{Hub, Object, ObjectId, ObjectKey, ObjectType, StorageRef};
 use crate::arrangement::Arrangement;
-use crate::blob::Blob;
+use crate::asset::Asset;
 use crate::document::{Compression, DocumentStorage};
 use crate::item::AudioItem;
 use crate::source::AudioSource;
@@ -62,12 +62,12 @@ impl SerializationContext<'_> {
     fn serialize_loop(&mut self) -> Result<()> {
         while let Some((ty, uuid, id)) = self.deps.pop() {
             match ty {
+                ObjectType::Arrangement => self.serialize_obj::<Arrangement>(uuid, id.into())?,
+                ObjectType::Asset => self.serialize_obj::<Asset>(uuid, id.into())?,
                 ObjectType::AudioItem => self.serialize_obj::<AudioItem>(uuid, id.into())?,
                 ObjectType::AudioSource => self.serialize_obj::<AudioSource>(uuid, id.into())?,
                 ObjectType::Track => self.serialize_obj::<Track>(uuid, id.into())?,
-                ObjectType::Arrangement => self.serialize_obj::<Arrangement>(uuid, id.into())?,
                 ObjectType::TempoMap => self.serialize_obj::<TempoMap>(uuid, id.into())?,
-                ObjectType::Blob => self.serialize_obj::<Blob>(uuid, id.into())?,
             }
         }
 
@@ -142,12 +142,12 @@ impl DeserializationContext<'_> {
     fn deserialize_loop(&mut self) -> Result<()> {
         while let Some((ty, uuid, id)) = self.deps.pop() {
             match ty {
+                ObjectType::Arrangement => self.deserialize_obj::<Arrangement>(uuid, id.into())?,
+                ObjectType::Asset => self.deserialize_obj::<Asset>(uuid, id.into())?,
                 ObjectType::AudioItem => self.deserialize_obj::<AudioItem>(uuid, id.into())?,
                 ObjectType::AudioSource => self.deserialize_obj::<AudioSource>(uuid, id.into())?,
                 ObjectType::Track => self.deserialize_obj::<Track>(uuid, id.into())?,
-                ObjectType::Arrangement => self.deserialize_obj::<Arrangement>(uuid, id.into())?,
                 ObjectType::TempoMap => self.deserialize_obj::<TempoMap>(uuid, id.into())?,
-                ObjectType::Blob => self.deserialize_obj::<Blob>(uuid, id.into())?,
             }
         }
 

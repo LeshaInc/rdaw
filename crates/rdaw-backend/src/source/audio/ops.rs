@@ -1,5 +1,5 @@
+use rdaw_api::asset::AssetId;
 use rdaw_api::audio::AudioMetadata;
-use rdaw_api::blob::BlobId;
 use rdaw_api::source::{
     AudioSourceId, AudioSourceOperations, AudioSourceRequest, AudioSourceResponse,
 };
@@ -19,8 +19,8 @@ impl Backend {
 
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn create_audio_source(&mut self, blob_id: BlobId) -> Result<AudioSourceId> {
-        let _ = blob_id;
+    pub fn create_audio_source(&mut self, asset_id: AssetId) -> Result<AudioSourceId> {
+        let _ = asset_id;
         todo!()
     }
 

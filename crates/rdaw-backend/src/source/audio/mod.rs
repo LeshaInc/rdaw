@@ -1,7 +1,7 @@
 mod ops;
 
+use rdaw_api::asset::AssetId;
 use rdaw_api::audio::AudioMetadata;
-use rdaw_api::blob::BlobId;
 use rdaw_api::source::AudioSourceId;
 use rdaw_api::Result;
 
@@ -13,7 +13,7 @@ impl ObjectId for AudioSourceId {
 
 #[derive(Debug, Clone)]
 pub struct AudioSource {
-    pub blob_id: BlobId,
+    pub asset_id: AssetId,
     pub metadata: AudioMetadata,
 }
 

@@ -1,5 +1,5 @@
 pub mod arrangement;
-pub mod blob;
+pub mod asset;
 pub mod document;
 pub mod item;
 pub mod object;
@@ -16,7 +16,6 @@ use rdaw_api::{BackendProtocol, BackendRequest, ErrorKind, Result};
 use rdaw_rpc::transport::{LocalServerTransport, ServerTransport};
 use rdaw_rpc::{ClientMessage, StreamIdAllocator};
 
-use self::blob::BlobCache;
 use self::object::{Hub, SubscribersHub};
 use self::track::TrackViewCache;
 
@@ -28,7 +27,6 @@ pub struct Backend {
     hub: Hub,
     subscribers: SubscribersHub,
 
-    blob_cache: BlobCache,
     track_view_cache: TrackViewCache,
 }
 
@@ -43,7 +41,6 @@ impl Backend {
             hub: Hub::default(),
             subscribers: SubscribersHub::new(stream_id_allocator.clone()),
 
-            blob_cache: BlobCache::default(),
             track_view_cache: TrackViewCache::default(),
         }
     }
@@ -67,12 +64,12 @@ impl Backend {
                         self.handle_arrangement_request(self.transport.clone(), id, req)
                             .await?
                     }
-                    BackendRequest::AudioSource(req) => {
-                        self.handle_audio_source_request(self.transport.clone(), id, req)
+                    BackendRequest::Asset(req) => {
+                        self.handle_asset_request(self.transport.clone(), id, req)
                             .await?
                     }
-                    BackendRequest::Blob(req) => {
-                        self.handle_blob_request(self.transport.clone(), id, req)
+                    BackendRequest::AudioSource(req) => {
+                        self.handle_audio_source_request(self.transport.clone(), id, req)
                             .await?
                     }
                     BackendRequest::Document(req) => {
