@@ -2,6 +2,7 @@ use chrono::Utc;
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::document::{DocumentId, DocumentOperations, DocumentRequest, DocumentResponse};
 use rdaw_api::{format_err, BackendProtocol, ErrorKind, Result};
+use rdaw_core::path::Utf8PathBuf;
 use tracing::instrument;
 
 use super::{Document, DocumentRevision};
@@ -31,7 +32,7 @@ impl Backend {
 
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn open_document(&mut self, path: String) -> Result<DocumentId> {
+    pub fn open_document(&mut self, path: Utf8PathBuf) -> Result<DocumentId> {
         let document = Document::open(path.as_ref())?;
 
         let (_, last_revision) = document
@@ -80,7 +81,7 @@ impl Backend {
 
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn save_document_as(&mut self, id: DocumentId, path: String) -> Result<()> {
+    pub fn save_document_as(&mut self, id: DocumentId, path: Utf8PathBuf) -> Result<()> {
         let document = self.documents.get_or_err(id)?;
 
         let (_, last_revision) = document

@@ -1,5 +1,6 @@
 use blake3::Hash;
 use rdaw_api::Result;
+use rdaw_core::path::Utf8Path;
 use serde::{Deserialize, Serialize};
 
 use super::{Asset, EmbeddedAsset, ExternalAsset};
@@ -46,6 +47,12 @@ type AssetLatest<'a> = AssetV1<'a>;
 
 #[derive(Debug, Serialize, Deserialize)]
 enum AssetV1<'a> {
-    External { path: &'a str, hash: Hash },
-    Embedded { hash: Hash },
+    External {
+        #[serde(borrow)]
+        path: &'a Utf8Path,
+        hash: Hash,
+    },
+    Embedded {
+        hash: Hash,
+    },
 }

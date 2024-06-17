@@ -1,7 +1,6 @@
-use std::path::Path;
-
 use blake3::Hash;
 use rdaw_api::{bail, format_err, ErrorKind};
+use rdaw_core::path::{Utf8Path, Utf8PathBuf};
 use rdaw_core::Uuid;
 use rusqlite::{Connection, OpenFlags};
 use tempfile::{NamedTempFile, TempPath};
@@ -43,7 +42,7 @@ impl Database {
         Ok(db)
     }
 
-    pub fn open(path: &Path) -> Result<Database> {
+    pub fn open(path: &Utf8Path) -> Result<Database> {
         let mut db = Database {
             db: Connection::open_with_flags(
                 path,
@@ -159,24 +158,28 @@ impl Database {
         Ok(())
     }
 
-    pub fn save_as(&self, path: &Path, revision: DocumentRevision) -> Result<Database> {
-        let target_dir = path
-            .parent()
-            .map(|v| v.to_owned())
-            .unwrap_or_else(std::env::temp_dir);
+    pub fn save_as(&self, path: &Utf8Path, revision: DocumentRevision) -> Result<Database> {
+        let target_dir = path.parent().map(|v| Ok(v.to_owned())).unwrap_or_else(|| {
+            Utf8PathBuf::from_path_buf(std::env::temp_dir()).map_err(|path| {
+                format_err!(
+                    ErrorKind::Other,
+                    "temp_dir returned a non-utf-8 path ({})",
+                    path.display()
+                )
+            })
+        })?;
 
         let temp_file = tempfile::Builder::new()
             .prefix(".rdaw-temp-")
             .tempfile_in(target_dir)?;
 
-        let temp_path_str = temp_file
-            .path()
-            .to_str()
-            .ok_or_else(|| format_err!(ErrorKind::InvalidUtf8, "invalid utf-8 in document path"))?;
+        let temp_file_path = Utf8Path::from_path(temp_file.path())
+            .ok_or_else(|| format_err!(ErrorKind::InvalidUtf8, "invalid utf-8 in temp path"))?;
 
-        self.db.execute("VACUUM INTO ?1", [temp_path_str])?;
+        self.db
+            .execute("VACUUM INTO ?1", [temp_file_path.as_str()])?;
 
-        let mut new_db = Database::open(temp_file.path())?;
+        let mut new_db = Database::open(temp_file_path)?;
         new_db.save(revision)?;
         drop(new_db);
 

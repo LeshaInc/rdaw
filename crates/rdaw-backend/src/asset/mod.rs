@@ -4,6 +4,7 @@ mod ops;
 use blake3::Hash;
 use rdaw_api::asset::AssetId;
 use rdaw_api::Result;
+use rdaw_core::path::Utf8PathBuf;
 
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
@@ -19,7 +20,7 @@ pub enum Asset {
 
 #[derive(Debug, Clone)]
 pub struct ExternalAsset {
-    pub path: String,
+    pub path: Utf8PathBuf,
     pub hash: Hash,
 }
 

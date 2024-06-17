@@ -4,6 +4,7 @@ use blake3::Hasher;
 use rdaw_api::asset::{AssetId, AssetOperations, AssetRequest, AssetResponse};
 use rdaw_api::document::DocumentId;
 use rdaw_api::{BackendProtocol, Result};
+use rdaw_core::path::Utf8PathBuf;
 use tracing::instrument;
 
 use super::{Asset, EmbeddedAsset, ExternalAsset};
@@ -18,7 +19,7 @@ impl Backend {
     pub fn create_external_asset(
         &mut self,
         document_id: DocumentId,
-        path: String,
+        path: Utf8PathBuf,
     ) -> Result<AssetId> {
         let mut hasher = Hasher::new();
         hasher.update_mmap(&path)?;

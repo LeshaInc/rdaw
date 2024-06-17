@@ -7,12 +7,12 @@ mod storage;
 #[cfg(test)]
 mod tests;
 
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use blake3::Hash;
 use chrono::{DateTime, Utc};
 use rdaw_api::Result;
+use rdaw_core::path::{Utf8Path, Utf8PathBuf};
 use rdaw_core::Uuid;
 
 use self::blob::{Blob, BlobChunk, BlobId};
@@ -24,7 +24,7 @@ pub use self::storage::DocumentStorage;
 #[derive(Debug)]
 pub struct Document {
     db: Arc<Mutex<Database>>,
-    path: Option<PathBuf>,
+    path: Option<Utf8PathBuf>,
 }
 
 impl Document {
@@ -37,7 +37,7 @@ impl Document {
         })
     }
 
-    pub fn open(path: &Path) -> Result<Document> {
+    pub fn open(path: &Utf8Path) -> Result<Document> {
         let db = Database::open(path)?;
         let document = Document {
             db: Arc::new(Mutex::new(db)),
@@ -47,7 +47,7 @@ impl Document {
         Ok(document)
     }
 
-    pub fn path(&self) -> Option<&Path> {
+    pub fn path(&self) -> Option<&Utf8Path> {
         self.path.as_deref()
     }
 
@@ -57,7 +57,7 @@ impl Document {
         Ok(())
     }
 
-    pub fn save_as(&self, path: &Path, revision: DocumentRevision) -> Result<Document> {
+    pub fn save_as(&self, path: &Utf8Path, revision: DocumentRevision) -> Result<Document> {
         let db = self.db.lock().unwrap();
         let new_db = db.save_as(path, revision)?;
         Ok(Document {

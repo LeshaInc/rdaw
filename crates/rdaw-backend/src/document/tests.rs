@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 
 use chrono::Utc;
+use rdaw_core::path::Utf8Path;
 use rdaw_core::Uuid;
 use tempfile::NamedTempFile;
 
@@ -38,7 +39,8 @@ fn save_as() -> Result<()> {
         arrangement_uuid: Uuid::new_v4(),
     };
 
-    let copy_path = NamedTempFile::with_prefix(".rdaw-test-")?.into_temp_path();
+    let copy_temp_file = NamedTempFile::with_prefix(".rdaw-test-")?;
+    let copy_path = Utf8Path::from_path(copy_temp_file.path()).unwrap();
     orig.save_as(&copy_path, revision)?;
 
     let copy = Document::open(&copy_path)?;
