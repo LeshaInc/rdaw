@@ -1,0 +1,8 @@
+[package]
+name = "rdaw-ffmpeg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ffmpeg-sys-next.workspace = true
+tracing.workspace = true
