@@ -2,7 +2,9 @@ use std::io::{Read, Seek};
 use std::ptr;
 
 use ffmpeg_sys_next as ffi;
+use rdaw_api::{bail, ErrorKind, Result};
 
+use crate::av_strerror;
 use crate::reader::AVIOReaderContext;
 
 pub struct InputContext<T> {
@@ -11,12 +13,15 @@ pub struct InputContext<T> {
 }
 
 impl<T: Read + Seek> InputContext<T> {
-    pub fn new(reader: T) -> InputContext<T> {
-        let reader = AVIOReaderContext::new(reader);
+    pub fn new(reader: T) -> Result<InputContext<T>> {
+        let reader = AVIOReaderContext::new(reader)?;
 
         let mut raw = unsafe { ffi::avformat_alloc_context() };
         if raw.is_null() {
-            panic!("failed to allocate avformat context");
+            bail!(
+                ErrorKind::OutOfMemory,
+                "failed to allocate avformat context"
+            );
         }
 
         unsafe {
@@ -27,18 +32,18 @@ impl<T: Read + Seek> InputContext<T> {
             ffi::avformat_open_input(&mut raw, ptr::null(), ptr::null(), ptr::null_mut())
         };
         if res < 0 {
-            panic!("failed to open avformat input context");
+            return Err(av_strerror(res));
         }
 
         let res = unsafe { ffi::avformat_find_stream_info(raw, ptr::null_mut()) };
         if res < 0 {
-            panic!("failed to get avformat stream info");
+            return Err(av_strerror(res));
         }
 
-        InputContext {
+        Ok(InputContext {
             _reader: reader,
             raw,
-        }
+        })
     }
 }
 

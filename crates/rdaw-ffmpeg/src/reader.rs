@@ -2,6 +2,7 @@ use std::ffi::{c_int, c_void};
 use std::io::{Read, Seek, SeekFrom};
 
 use ffmpeg_sys_next as ffi;
+use rdaw_api::{bail, ErrorKind, Result};
 
 pub struct AVIOReaderContext<T> {
     raw: *mut ffi::AVIOContext,
@@ -9,14 +10,16 @@ pub struct AVIOReaderContext<T> {
 }
 
 impl<T: Read + Seek> AVIOReaderContext<T> {
-    pub fn new(reader: T) -> AVIOReaderContext<T> {
+    pub fn new(reader: T) -> Result<AVIOReaderContext<T>> {
         let mut reader = Box::new(reader);
 
         let buffer_size = 4096;
         let buffer = unsafe { ffi::av_malloc(buffer_size) };
-
         if buffer.is_null() {
-            panic!("failed to allocate buffer for avio context")
+            bail!(
+                ErrorKind::OutOfMemory,
+                "failed to allocate buffer for avio context"
+            );
         }
 
         unsafe extern "C" fn read<T: Read + Seek>(
@@ -34,10 +37,14 @@ impl<T: Read + Seek> AVIOReaderContext<T> {
             let reader = &mut *(opaque as *mut T);
             match reader.read(buf) {
                 Ok(0) => ffi::AVERROR_EOF,
-                Ok(v) => v as i32,
+                Ok(v) => v as c_int,
                 Err(error) => {
                     tracing::error!(?error, "avio read error");
-                    ffi::AVERROR_EXTERNAL
+                    if let Some(code) = error.raw_os_error() {
+                        -code
+                    } else {
+                        ffi::AVERROR_EXTERNAL
+                    }
                 }
             }
         }
@@ -80,8 +87,12 @@ impl<T: Read + Seek> AVIOReaderContext<T> {
                     v
                 }
                 Err(error) => {
-                    tracing::error!(?error, "avio read error");
-                    ffi::AVERROR_EXTERNAL.into()
+                    tracing::error!(?error, "avio seek error");
+                    i64::from(if let Some(code) = error.raw_os_error() {
+                        -code
+                    } else {
+                        ffi::AVERROR_EXTERNAL
+                    })
                 }
             }
         }
@@ -97,15 +108,14 @@ impl<T: Read + Seek> AVIOReaderContext<T> {
                 Some(seek::<T>),
             )
         };
-
         if raw.is_null() {
-            panic!("failed to allocate avio context")
+            bail!(ErrorKind::OutOfMemory, "failed to allocate avio context");
         }
 
-        AVIOReaderContext {
+        Ok(AVIOReaderContext {
             _reader: reader,
             raw,
-        }
+        })
     }
 
     pub fn as_raw(&self) -> *mut ffi::AVIOContext {

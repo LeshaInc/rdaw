@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rdaw-api.workspace = true
+
 ffmpeg-sys-next.workspace = true
 tracing.workspace = true

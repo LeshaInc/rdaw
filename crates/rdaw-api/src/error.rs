@@ -8,6 +8,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ErrorKind {
+    Other,
+
     Deserialization,
     Disconnected,
     IndexOutOfBounds,
@@ -18,7 +20,7 @@ pub enum ErrorKind {
     Io,
     NotFound,
     NotSupported,
-    Other,
+    OutOfMemory,
     PermissionDenied,
     Serialization,
     Sql,
@@ -29,8 +31,9 @@ impl From<io::ErrorKind> for ErrorKind {
     fn from(value: io::ErrorKind) -> Self {
         match value {
             io::ErrorKind::NotFound => ErrorKind::NotFound,
-            io::ErrorKind::PermissionDenied => ErrorKind::PermissionDenied,
             io::ErrorKind::Other => ErrorKind::Other,
+            io::ErrorKind::OutOfMemory => ErrorKind::OutOfMemory,
+            io::ErrorKind::PermissionDenied => ErrorKind::PermissionDenied,
             _ => ErrorKind::Io,
         }
     }
