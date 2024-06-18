@@ -58,7 +58,7 @@ impl<T: Read + Seek> AVIOReaderContext<T> {
 
             let res = if whence == ffi::AVSEEK_SIZE {
                 let mut get_size = || -> std::io::Result<u64> {
-                    let pos = reader.seek(SeekFrom::Current(0))?;
+                    let pos = reader.stream_position()?;
                     let size = reader.seek(SeekFrom::End(0))?;
                     reader.seek(SeekFrom::Start(pos))?;
                     Ok(size)
