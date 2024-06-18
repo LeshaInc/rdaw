@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use rdaw_api::arrangement::{ArrangementEvent, ArrangementEvents, ArrangementId};
-use rdaw_api::track::{
-    TrackEvent, TrackEvents, TrackHierarchyEvent, TrackId, TrackViewEvent, TrackViewId,
-};
+use rdaw_api::arrangement::{ArrangementEvents, ArrangementId};
+use rdaw_api::track::{TrackEvents, TrackHierarchyEvent, TrackId, TrackViewEvent, TrackViewId};
 use rdaw_api::{BackendProtocol, Result};
 use rdaw_rpc::transport::ServerTransport;
 use rdaw_rpc::{StreamId, StreamIdAllocator, Subscribers};
@@ -65,8 +63,8 @@ impl_storage_ref!(tracks: Track);
 
 #[derive(Debug)]
 pub struct SubscribersHub {
-    pub arrangement: Subscribers<ArrangementId, ArrangementEvent>,
-    pub track: Subscribers<TrackId, TrackEvent>,
+    pub arrangement_name: Subscribers<ArrangementId, String>,
+    pub track_name: Subscribers<TrackId, String>,
     pub track_hierarchy: Subscribers<TrackId, TrackHierarchyEvent>,
     pub track_view: Subscribers<TrackViewId, TrackViewEvent>,
 }
@@ -74,20 +72,20 @@ pub struct SubscribersHub {
 impl SubscribersHub {
     pub fn new(id_allocator: Arc<StreamIdAllocator>) -> SubscribersHub {
         SubscribersHub {
-            arrangement: Subscribers::new(id_allocator.clone()),
-            track: Subscribers::new(id_allocator.clone()),
+            arrangement_name: Subscribers::new(id_allocator.clone()),
+            track_name: Subscribers::new(id_allocator.clone()),
             track_hierarchy: Subscribers::new(id_allocator.clone()),
             track_view: Subscribers::new(id_allocator.clone()),
         }
     }
 
     pub fn close_one(&mut self, stream: StreamId) {
-        if let Some(key) = self.arrangement.find_key(stream) {
-            self.arrangement.close_one(key, stream);
+        if let Some(key) = self.arrangement_name.find_key(stream) {
+            self.arrangement_name.close_one(key, stream);
         }
 
-        if let Some(key) = self.track.find_key(stream) {
-            self.track.close_one(key, stream);
+        if let Some(key) = self.track_name.find_key(stream) {
+            self.track_name.close_one(key, stream);
         }
 
         if let Some(key) = self.track_hierarchy.find_key(stream) {
@@ -103,12 +101,14 @@ impl SubscribersHub {
     where
         T: ServerTransport<BackendProtocol>,
     {
-        self.arrangement
-            .deliver(t, |ev| ArrangementEvents::SubscribeArrangement(ev).into())
+        self.arrangement_name
+            .deliver(t, |ev| {
+                ArrangementEvents::SubscribeArrangementName(ev).into()
+            })
             .await?;
 
-        self.track
-            .deliver(t, |ev| TrackEvents::SubscribeTrack(ev).into())
+        self.track_name
+            .deliver(t, |ev| TrackEvents::SubscribeTrackName(ev).into())
             .await?;
 
         self.track_hierarchy

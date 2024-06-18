@@ -14,8 +14,7 @@ pub trait ArrangementOperations {
     async fn create_arrangement(&self, document_id: DocumentId) -> Result<ArrangementId>;
 
     #[sub]
-    async fn subscribe_arrangement(&self, id: ArrangementId)
-        -> Result<BoxStream<ArrangementEvent>>;
+    async fn subscribe_arrangement_name(&self, id: ArrangementId) -> Result<BoxStream<String>>;
 
     async fn get_arrangement_name(&self, id: ArrangementId) -> Result<String>;
 
@@ -24,10 +23,4 @@ pub trait ArrangementOperations {
     async fn get_arrangement_main_track(&self, id: ArrangementId) -> Result<TrackId>;
 
     async fn get_arrangement_tempo_map(&self, id: ArrangementId) -> Result<TempoMapId>;
-}
-
-#[non_exhaustive]
-#[derive(Debug, Clone)]
-pub enum ArrangementEvent {
-    NameChanged { new_name: String },
 }

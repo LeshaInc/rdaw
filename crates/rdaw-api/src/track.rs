@@ -26,7 +26,7 @@ pub trait TrackOperations {
     async fn create_track(&self, document_id: DocumentId) -> Result<TrackId>;
 
     #[sub]
-    async fn subscribe_track(&self, id: TrackId) -> Result<BoxStream<TrackEvent>>;
+    async fn subscribe_track_name(&self, id: TrackId) -> Result<BoxStream<String>>;
 
     #[sub]
     async fn subscribe_track_hierarchy(
@@ -120,12 +120,6 @@ impl TrackViewItem {
     }
 }
 
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TrackEvent {
-    NameChanged { new_name: String },
-}
-
 #[derive(Debug, Clone)]
 pub struct TrackHierarchy {
     root: TrackId,
@@ -193,7 +187,6 @@ pub struct TrackNode {
     pub parent: Option<TrackId>,
 }
 
-#[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TrackHierarchyEvent {
     ChildrenChanged {
@@ -202,7 +195,6 @@ pub enum TrackHierarchyEvent {
     },
 }
 
-#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum TrackViewEvent {
     ItemAdded {

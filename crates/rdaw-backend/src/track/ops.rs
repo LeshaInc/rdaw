@@ -1,8 +1,8 @@
 use rdaw_api::document::DocumentId;
 use rdaw_api::time::Time;
 use rdaw_api::track::{
-    TrackEvent, TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId,
-    TrackOperations, TrackRequest, TrackResponse, TrackViewEvent, TrackViewId, TrackViewItem,
+    TrackHierarchy, TrackHierarchyEvent, TrackId, TrackItem, TrackItemId, TrackOperations,
+    TrackRequest, TrackResponse, TrackViewEvent, TrackViewId, TrackViewItem,
 };
 use rdaw_api::{bail, format_err, BackendProtocol, ErrorKind, Result};
 use rdaw_rpc::StreamId;
@@ -43,9 +43,9 @@ impl Backend {
 
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn subscribe_track(&mut self, id: TrackId) -> Result<StreamId> {
+    pub fn subscribe_track_name(&mut self, id: TrackId) -> Result<StreamId> {
         self.hub.tracks.ensure_has(id)?;
-        Ok(self.subscribers.track.subscribe(id))
+        Ok(self.subscribers.track_name.subscribe(id))
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -75,10 +75,7 @@ impl Backend {
     pub fn set_track_name(&mut self, id: TrackId, new_name: String) -> Result<()> {
         let track = self.hub.tracks.get_mut_or_err(id)?;
         track.name.clone_from(&new_name);
-
-        let event = TrackEvent::NameChanged { new_name };
-        self.subscribers.track.notify(id, event);
-
+        self.subscribers.track_name.notify(id, new_name);
         Ok(())
     }
 

@@ -1,5 +1,5 @@
 use rdaw_api::arrangement::{
-    ArrangementEvent, ArrangementId, ArrangementOperations, ArrangementRequest, ArrangementResponse,
+    ArrangementId, ArrangementOperations, ArrangementRequest, ArrangementResponse,
 };
 use rdaw_api::document::DocumentId;
 use rdaw_api::tempo_map::TempoMapId;
@@ -62,9 +62,9 @@ impl Backend {
 
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn subscribe_arrangement(&mut self, id: ArrangementId) -> Result<StreamId> {
+    pub fn subscribe_arrangement_name(&mut self, id: ArrangementId) -> Result<StreamId> {
         self.hub.arrangements.ensure_has(id)?;
-        Ok(self.subscribers.arrangement.subscribe(id))
+        Ok(self.subscribers.arrangement_name.subscribe(id))
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -79,10 +79,7 @@ impl Backend {
     pub fn set_arrangement_name(&mut self, id: ArrangementId, new_name: String) -> Result<()> {
         let arrangement = self.hub.arrangements.get_mut_or_err(id)?;
         arrangement.name.clone_from(&new_name);
-
-        let event = ArrangementEvent::NameChanged { new_name };
-        self.subscribers.arrangement.notify(id, event);
-
+        self.subscribers.arrangement_name.notify(id, new_name);
         Ok(())
     }
 

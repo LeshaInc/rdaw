@@ -76,10 +76,7 @@ fn track_tree(root: TrackId) -> impl IntoView {
             state.hierarchy.set(new_hierarchy);
 
             stream_for_each(stream, move |event| {
-                let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event else {
-                    return;
-                };
-
+                let TrackHierarchyEvent::ChildrenChanged { id, new_children } = event;
                 state.hierarchy.update(|v| {
                     v.set_children(id, new_children.into_iter().collect());
                 });

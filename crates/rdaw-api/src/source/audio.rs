@@ -13,20 +13,11 @@ pub trait AudioSourceOperations {
     async fn create_audio_source(&self, asset_id: AssetId) -> Result<AudioSourceId>;
 
     #[sub]
-    async fn subscribe_audio_source(
-        &self,
-        id: AudioSourceId,
-    ) -> Result<BoxStream<AudioSourceEvent>>;
+    async fn subscribe_audio_source_name(&self, id: AudioSourceId) -> Result<BoxStream<String>>;
 
     async fn get_audio_source_name(&self, id: AudioSourceId) -> Result<String>;
 
     async fn set_audio_source_name(&self, id: AudioSourceId, new_name: String) -> Result<()>;
 
     async fn get_audio_source_metadata(&self, id: AudioSourceId) -> Result<AudioMetadata>;
-}
-
-#[non_exhaustive]
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum AudioSourceEvent {
-    NameChanged { new_name: String },
 }

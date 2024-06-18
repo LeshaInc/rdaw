@@ -26,7 +26,7 @@ impl Backend {
 
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn subscribe_audio_source(&mut self, id: AudioSourceId) -> Result<StreamId> {
+    pub fn subscribe_audio_source_name(&mut self, id: AudioSourceId) -> Result<StreamId> {
         let _ = id;
         todo!()
     }
