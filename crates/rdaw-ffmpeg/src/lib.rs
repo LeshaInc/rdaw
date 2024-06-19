@@ -1,20 +1,18 @@
-use std::ffi::{c_int, CStr};
+use std::ffi::c_int;
 
-use ffmpeg_sys_next as ffi;
-use rdaw_api::{format_err, Error, ErrorKind};
+mod decoder;
+mod error;
+mod frame;
+mod input;
+mod packet;
+mod reader;
 
-pub mod input;
-pub mod reader;
+pub use self::decoder::Decoder;
+pub use self::error::{Error, ErrorKind, Result};
+pub use self::frame::{FilledFrame, Frame};
+pub use self::input::InputContext;
+pub use self::packet::{FilledPacket, Packet};
+pub use self::reader::ReaderContext;
 
-#[track_caller]
-fn av_strerror(code: c_int) -> Error {
-    let mut buf = [0u8; 256];
-    unsafe { ffi::av_strerror(code, buf.as_mut_ptr() as *mut _, 256) };
-
-    CStr::from_bytes_until_nul(&buf)
-        .map(|v| {
-            let msg = v.to_string_lossy();
-            format_err!(ErrorKind::Other, "ffmpeg error: {msg}")
-        })
-        .unwrap_or_else(|_| format_err!(ErrorKind::Other, "ffmpeg error"))
-}
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct StreamIdx(pub c_int);

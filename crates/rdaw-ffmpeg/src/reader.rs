@@ -2,24 +2,22 @@ use std::ffi::{c_int, c_void};
 use std::io::{Read, Seek, SeekFrom};
 
 use ffmpeg_sys_next as ffi;
-use rdaw_api::{bail, ErrorKind, Result};
 
-pub struct AVIOReaderContext<T> {
+use crate::{Error, Result};
+
+pub struct ReaderContext<T> {
     raw: *mut ffi::AVIOContext,
     _reader: Box<T>,
 }
 
-impl<T: Read + Seek> AVIOReaderContext<T> {
-    pub fn new(reader: T) -> Result<AVIOReaderContext<T>> {
+impl<T: Read + Seek> ReaderContext<T> {
+    pub fn new(reader: T) -> Result<ReaderContext<T>> {
         let mut reader = Box::new(reader);
 
         let buffer_size = 4096;
         let buffer = unsafe { ffi::av_malloc(buffer_size) };
         if buffer.is_null() {
-            bail!(
-                ErrorKind::OutOfMemory,
-                "failed to allocate buffer for avio context"
-            );
+            return Err(Error::new_oom("avio buffer"));
         }
 
         unsafe extern "C" fn read<T: Read + Seek>(
@@ -109,21 +107,21 @@ impl<T: Read + Seek> AVIOReaderContext<T> {
             )
         };
         if raw.is_null() {
-            bail!(ErrorKind::OutOfMemory, "failed to allocate avio context");
+            return Err(Error::new_oom("avio context"));
         }
 
-        Ok(AVIOReaderContext {
+        Ok(ReaderContext {
             _reader: reader,
             raw,
         })
     }
 
-    pub fn as_raw(&self) -> *mut ffi::AVIOContext {
+    pub(crate) fn as_raw(&mut self) -> *mut ffi::AVIOContext {
         self.raw
     }
 }
 
-impl<T> Drop for AVIOReaderContext<T> {
+impl<T> Drop for ReaderContext<T> {
     fn drop(&mut self) {
         unsafe {
             if !(*self.raw).buffer.is_null() {
