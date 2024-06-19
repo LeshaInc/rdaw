@@ -71,7 +71,7 @@ impl<R: Read + Seek> InputContext<R> {
         Ok(Some((stream_idx, decoder)))
     }
 
-    pub fn get_audio_stream_metadata(&self, idx: StreamIdx) -> Result<AudioMetadata> {
+    pub fn get_audio_stream_raw_metadata(&self, idx: StreamIdx) -> Result<RawAudioMetadata> {
         let streams = unsafe {
             std::slice::from_raw_parts((*self.raw).streams, (*self.raw).nb_streams as usize)
         };
@@ -84,21 +84,24 @@ impl<R: Read + Seek> InputContext<R> {
 
         let codecpar = unsafe { (*stream).codecpar };
 
-        let channels = convert_channel_layout(unsafe { (*codecpar).ch_layout });
-        let sample_rate = unsafe { (*codecpar).sample_rate as u32 };
-        let sample_format = convert_sample_format(unsafe { (*codecpar).format });
+        Ok(unsafe {
+            RawAudioMetadata {
+                ch_layout: (*codecpar).ch_layout,
+                sample_format: std::mem::transmute((*codecpar).format),
+                sample_rate: (*codecpar).sample_rate,
+                duration_ns: (*stream).duration * ((*stream).time_base.num as i64)
+                    / ((*stream).time_base.den as i64),
+            }
+        })
+    }
 
-        let duration_ns = unsafe {
-            (*stream).duration * ((*stream).time_base.num as i64) / ((*stream).time_base.den as i64)
-        };
-
-        let duration = RealTime::from_nanos(duration_ns);
-
+    pub fn get_audio_stream_metadata(&self, idx: StreamIdx) -> Result<AudioMetadata> {
+        let raw = self.get_audio_stream_raw_metadata(idx)?;
         Ok(AudioMetadata {
-            channels,
-            sample_rate,
-            sample_format,
-            duration,
+            channels: convert_channel_layout(raw.ch_layout),
+            sample_rate: raw.sample_rate as u32,
+            sample_format: convert_sample_format(raw.sample_rate),
+            duration: RealTime::from_nanos(raw.duration_ns),
         })
     }
 
@@ -117,6 +120,13 @@ impl<R> Drop for InputContext<R> {
             ffi::avformat_close_input(&mut self.raw);
         }
     }
+}
+
+pub struct RawAudioMetadata {
+    pub ch_layout: ffi::AVChannelLayout,
+    pub sample_format: ffi::AVSampleFormat,
+    pub sample_rate: i32,
+    pub duration_ns: i64,
 }
 
 #[rustfmt::skip]

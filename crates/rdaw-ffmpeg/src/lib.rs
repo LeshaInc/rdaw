@@ -7,6 +7,7 @@ mod input;
 mod media;
 mod packet;
 mod reader;
+mod resample;
 
 pub use self::decoder::Decoder;
 pub use self::error::{Error, ErrorKind, Result};

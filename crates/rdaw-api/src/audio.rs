@@ -68,5 +68,5 @@ pub enum SampleFormat {
 pub trait AudioInputStream<'media> {
     fn metadata(&self) -> &AudioMetadata;
 
-    fn next_frame(&mut self, buf: &mut [f32]) -> Result<usize>;
+    fn next_frame(&mut self) -> Result<&[f32]>;
 }

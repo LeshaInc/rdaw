@@ -43,6 +43,18 @@ pub struct FilledFrame<'a> {
     _packet: PhantomData<&'a mut Frame>,
 }
 
+impl FilledFrame<'_> {
+    pub(crate) fn as_raw(&self) -> *const ffi::AVFrame {
+        self.raw as _
+    }
+
+    pub(crate) unsafe fn get_f32_samples(&self) -> &[f32] {
+        let num_samples =
+            ((*self.raw).nb_samples as usize) * ((*self.raw).ch_layout.nb_channels as usize);
+        std::slice::from_raw_parts((*self.raw).data[0] as *const f32, num_samples)
+    }
+}
+
 impl Drop for FilledFrame<'_> {
     fn drop(&mut self) {
         unsafe {
