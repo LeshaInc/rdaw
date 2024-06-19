@@ -6,6 +6,7 @@ pub mod audio;
 pub mod document;
 pub mod error;
 pub mod item;
+pub mod media;
 pub mod source;
 pub mod tempo_map;
 #[cfg(test)]
