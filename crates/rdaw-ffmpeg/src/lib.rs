@@ -4,6 +4,7 @@ mod decoder;
 mod error;
 mod frame;
 mod input;
+mod media;
 mod packet;
 mod reader;
 

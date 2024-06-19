@@ -5,13 +5,13 @@ use ffmpeg_sys_next as ffi;
 
 use crate::{Error, Result};
 
-pub struct ReaderContext<T> {
+pub struct ReaderContext<R> {
     raw: *mut ffi::AVIOContext,
-    _reader: Box<T>,
+    _reader: Box<R>,
 }
 
-impl<T: Read + Seek> ReaderContext<T> {
-    pub fn new(reader: T) -> Result<ReaderContext<T>> {
+impl<R: Read + Seek> ReaderContext<R> {
+    pub fn new(reader: R) -> Result<ReaderContext<R>> {
         let mut reader = Box::new(reader);
 
         let buffer_size = 4096;
@@ -100,10 +100,10 @@ impl<T: Read + Seek> ReaderContext<T> {
                 buffer as *mut u8,
                 buffer_size as i32,
                 0, // not writable
-                &mut *reader as *mut T as *mut _,
-                Some(read::<T>),
+                &mut *reader as *mut R as *mut _,
+                Some(read::<R>),
                 None,
-                Some(seek::<T>),
+                Some(seek::<R>),
             )
         };
         if raw.is_null() {

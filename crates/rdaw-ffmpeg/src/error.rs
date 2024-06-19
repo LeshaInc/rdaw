@@ -63,3 +63,15 @@ impl fmt::Debug for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl From<Error> for rdaw_api::Error {
+    #[track_caller]
+    fn from(error: Error) -> Self {
+        let kind = match error.kind() {
+            ErrorKind::OutOfMemory => rdaw_api::ErrorKind::OutOfMemory,
+            _ => rdaw_api::ErrorKind::Other,
+        };
+
+        rdaw_api::Error::new(kind, format!("ffmpeg error: {error}"))
+    }
+}
