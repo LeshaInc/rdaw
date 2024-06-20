@@ -79,7 +79,7 @@ impl<R: Read + Seek> InputContext<R> {
         let stream = unsafe { &*streams[stream_idx.0 as usize] };
         let codecpar = stream.codecpar;
 
-        let decoder = Decoder::new(codec, codecpar)?;
+        let decoder = Decoder::new(codec, codecpar, stream.time_base)?;
 
         Ok(Some((stream_idx, decoder)))
     }

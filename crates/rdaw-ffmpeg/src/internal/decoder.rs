@@ -15,6 +15,7 @@ impl Decoder {
     pub fn new(
         codec: *const ffi::AVCodec,
         codecpar: *const ffi::AVCodecParameters,
+        pkt_timebase: ffi::AVRational,
     ) -> Result<Decoder> {
         let raw = unsafe { ffi::avcodec_alloc_context3(codec) };
         if raw.is_null() {
@@ -29,6 +30,10 @@ impl Decoder {
         let res = unsafe { ffi::avcodec_open2(raw, codec, null_mut()) };
         if res < 0 {
             return Err(Error::new(res, "avcodec_open2"));
+        }
+
+        unsafe {
+            (*raw).pkt_timebase = pkt_timebase;
         }
 
         Ok(Decoder { raw })
