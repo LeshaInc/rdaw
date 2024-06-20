@@ -2,7 +2,9 @@ use std::ptr::{self, null_mut};
 
 use ffmpeg_sys_next as ffi;
 
-use crate::{Error, FilledFrame, FilledPacket, Frame, Result};
+use super::error::{Error, Result};
+use super::frame::{FilledFrame, Frame};
+use super::packet::FilledPacket;
 
 #[derive(Debug)]
 pub struct Decoder {
@@ -10,7 +12,7 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    pub(crate) fn new(
+    pub fn new(
         codec: *const ffi::AVCodec,
         codecpar: *const ffi::AVCodecParameters,
     ) -> Result<Decoder> {

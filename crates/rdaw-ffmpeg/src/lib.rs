@@ -1,21 +1,6 @@
-use std::ffi::c_int;
+mod audio_input_stream;
+mod internal;
+mod media_input;
 
-mod decoder;
-mod error;
-mod frame;
-mod input;
-mod media;
-mod packet;
-mod reader;
-mod resample;
-
-pub use self::decoder::Decoder;
-pub use self::error::{Error, ErrorKind, Result};
-pub use self::frame::{FilledFrame, Frame};
-pub use self::input::InputContext;
-pub use self::media::{AudioInputStream, MediaInput};
-pub use self::packet::{FilledPacket, Packet};
-pub use self::reader::ReaderContext;
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct StreamIdx(pub c_int);
+pub use self::audio_input_stream::AudioInputStream;
+pub use self::media_input::MediaInput;

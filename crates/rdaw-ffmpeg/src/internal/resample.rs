@@ -1,6 +1,6 @@
 use ffmpeg_sys_next as ffi;
 
-use crate::{Error, Result};
+use super::error::{Error, Result};
 
 pub struct ResamplerConfig<'a> {
     pub in_ch_layout: &'a ffi::AVChannelLayout,
@@ -21,7 +21,7 @@ pub struct Resampler {
 }
 
 impl Resampler {
-    pub(crate) fn new(config: ResamplerConfig) -> Result<Resampler> {
+    pub fn new(config: ResamplerConfig) -> Result<Resampler> {
         let mut raw = std::ptr::null_mut();
         let res = unsafe {
             ffi::swr_alloc_set_opts2(

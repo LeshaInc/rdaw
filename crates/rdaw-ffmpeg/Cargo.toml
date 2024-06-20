@@ -9,3 +9,6 @@ rdaw-core.workspace = true
 
 ffmpeg-sys-next.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

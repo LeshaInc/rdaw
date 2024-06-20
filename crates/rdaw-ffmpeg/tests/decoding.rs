@@ -9,6 +9,8 @@ use rdaw_ffmpeg::MediaInput;
 
 #[test]
 fn decode_ogg() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/samples/220_Hz_sine_wave.ogg");
 

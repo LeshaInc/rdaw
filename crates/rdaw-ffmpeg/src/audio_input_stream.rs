@@ -5,34 +5,33 @@ use ffmpeg_sys_next as ffi;
 use rdaw_api::audio::AudioMetadata;
 use rdaw_api::Result;
 
-use crate::resample::{Resampler, ResamplerConfig};
-use crate::{Decoder, ErrorKind, Frame, InputContext, Packet, StreamIdx};
+use crate::internal::decoder::Decoder;
+use crate::internal::error::ErrorKind;
+use crate::internal::frame::Frame;
+use crate::internal::packet::Packet;
+use crate::internal::resample::{Resampler, ResamplerConfig};
+use crate::internal::StreamIdx;
+use crate::MediaInput;
 
 #[derive(Debug)]
-pub struct MediaInput<R> {
-    context: InputContext<R>,
+pub struct AudioInputStream<'media, R> {
+    media: &'media mut MediaInput<R>,
+    metadata: AudioMetadata,
+    stream_idx: StreamIdx,
+    decoder: Decoder,
+    resampler: Option<Resampler>,
+    packet: Packet,
+    frame: Frame,
 }
 
-impl<R: Read + Seek> rdaw_api::media::OpenMediaInput<R> for MediaInput<R> {
-    fn open(reader: R) -> Result<MediaInput<R>>
-    where
-        Self: Sized,
-    {
-        let context = InputContext::new(reader)?;
-        Ok(MediaInput { context })
-    }
-}
-
-impl<R: Read + Seek> rdaw_api::media::MediaInput for MediaInput<R> {
-    fn get_audio_stream(
-        &mut self,
-    ) -> Result<Option<Box<dyn rdaw_api::audio::AudioInputStream<'_> + '_>>> {
-        let Some((stream_idx, decoder)) = self.context.find_audio_stream()? else {
-            return Ok(None);
-        };
-
-        let raw_metadata = self.context.get_audio_stream_raw_metadata(stream_idx)?;
-        let metadata = self.context.get_audio_stream_metadata(stream_idx)?;
+impl<R: Read + Seek> AudioInputStream<'_, R> {
+    pub(crate) fn new(
+        media: &mut MediaInput<R>,
+        stream_idx: StreamIdx,
+        decoder: Decoder,
+    ) -> Result<AudioInputStream<'_, R>> {
+        let raw_metadata = media.context.get_audio_stream_raw_metadata(stream_idx)?;
+        let metadata = media.context.get_audio_stream_metadata(stream_idx)?;
 
         let target_format = ffi::AVSampleFormat::AV_SAMPLE_FMT_FLT;
 
@@ -52,27 +51,16 @@ impl<R: Read + Seek> rdaw_api::media::MediaInput for MediaInput<R> {
         let packet = Packet::new()?;
         let frame = Frame::new()?;
 
-        Ok(Some(Box::new(AudioInputStream {
+        Ok(AudioInputStream {
             metadata,
-            media: self,
+            media,
             stream_idx,
             decoder,
             resampler,
             packet,
             frame,
-        })))
+        })
     }
-}
-
-#[derive(Debug)]
-pub struct AudioInputStream<'media, R> {
-    media: &'media mut MediaInput<R>,
-    metadata: AudioMetadata,
-    stream_idx: StreamIdx,
-    decoder: Decoder,
-    resampler: Option<Resampler>,
-    packet: Packet,
-    frame: Frame,
 }
 
 impl<'media, R: Read + Seek> rdaw_api::audio::AudioInputStream<'media>

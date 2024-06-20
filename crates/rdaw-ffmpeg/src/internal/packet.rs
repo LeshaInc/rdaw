@@ -2,7 +2,8 @@ use std::marker::PhantomData;
 
 use ffmpeg_sys_next as ffi;
 
-use crate::{Error, Result, StreamIdx};
+use super::error::{Error, Result};
+use super::StreamIdx;
 
 #[derive(Debug)]
 pub struct Packet {
@@ -19,11 +20,11 @@ impl Packet {
         Ok(Packet { raw })
     }
 
-    pub(crate) fn as_raw(&mut self) -> *mut ffi::AVPacket {
+    pub fn as_raw(&mut self) -> *mut ffi::AVPacket {
         self.raw
     }
 
-    pub(crate) unsafe fn assume_filled(&mut self) -> FilledPacket<'_> {
+    pub unsafe fn assume_filled(&mut self) -> FilledPacket<'_> {
         FilledPacket {
             raw: self.raw,
             _packet: PhantomData,
@@ -46,7 +47,7 @@ pub struct FilledPacket<'a> {
 }
 
 impl FilledPacket<'_> {
-    pub(crate) fn as_raw(&mut self) -> *mut ffi::AVPacket {
+    pub fn as_raw(&mut self) -> *mut ffi::AVPacket {
         self.raw
     }
 

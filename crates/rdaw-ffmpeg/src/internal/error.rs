@@ -19,11 +19,11 @@ pub struct Error {
 }
 
 impl Error {
-    pub(crate) fn new(code: c_int, context: &'static str) -> Error {
+    pub fn new(code: c_int, context: &'static str) -> Error {
         Error { code, context }
     }
 
-    pub(crate) fn new_oom(context: &'static str) -> Error {
+    pub fn new_oom(context: &'static str) -> Error {
         Error {
             code: ffi::AVERROR(ffi::ENOMEM),
             context,

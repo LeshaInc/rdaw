@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use ffmpeg_sys_next as ffi;
 
-use crate::{Error, Result};
+use super::error::{Error, Result};
 
 #[derive(Debug)]
 pub struct Frame {
@@ -19,11 +19,11 @@ impl Frame {
         Ok(Frame { raw })
     }
 
-    pub(crate) fn as_raw(&mut self) -> *mut ffi::AVFrame {
+    pub fn as_raw(&mut self) -> *mut ffi::AVFrame {
         self.raw
     }
 
-    pub(crate) unsafe fn assume_filled(&mut self) -> FilledFrame<'_> {
+    pub unsafe fn assume_filled(&mut self) -> FilledFrame<'_> {
         FilledFrame {
             raw: self.raw,
             _packet: PhantomData,
@@ -46,7 +46,7 @@ pub struct FilledFrame<'a> {
 }
 
 impl FilledFrame<'_> {
-    pub(crate) unsafe fn get_data(&self) -> &[u8] {
+    pub unsafe fn get_data(&self) -> &[u8] {
         let bytes_per_sample =
             ffi::av_get_bytes_per_sample(std::mem::transmute((*self.raw).format)) as usize;
         let len = ((*self.raw).nb_samples as usize)

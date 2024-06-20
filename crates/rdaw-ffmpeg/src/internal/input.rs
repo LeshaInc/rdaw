@@ -5,17 +5,21 @@ use ffmpeg_sys_next as ffi;
 use rdaw_api::audio::{AudioChannel, AudioMetadata, SampleFormat};
 use rdaw_core::time::RealTime;
 
-use crate::{Decoder, Error, FilledPacket, Packet, ReaderContext, Result, StreamIdx};
+use super::decoder::Decoder;
+use super::error::{Error, Result};
+use super::packet::{FilledPacket, Packet};
+use super::reader::Reader;
+use super::StreamIdx;
 
 #[derive(Debug)]
 pub struct InputContext<R> {
-    _reader: ReaderContext<R>,
+    _reader: Reader<R>,
     raw: *mut ffi::AVFormatContext,
 }
 
 impl<R: Read + Seek> InputContext<R> {
     pub fn new(reader: R) -> Result<InputContext<R>> {
-        let mut reader = ReaderContext::new(reader)?;
+        let mut reader = Reader::new(reader)?;
 
         let mut raw = unsafe { ffi::avformat_alloc_context() };
         if raw.is_null() {

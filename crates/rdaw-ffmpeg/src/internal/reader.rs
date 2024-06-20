@@ -3,22 +3,22 @@ use std::io::{Read, Seek, SeekFrom};
 
 use ffmpeg_sys_next as ffi;
 
-use crate::{Error, Result};
+use super::error::{Error, Result};
 
 #[derive(Debug)]
-pub struct ReaderContext<R> {
+pub struct Reader<R> {
     raw: *mut ffi::AVIOContext,
     _reader: Box<R>,
 }
 
-impl<R: Read + Seek> ReaderContext<R> {
-    pub fn new(reader: R) -> Result<ReaderContext<R>> {
+impl<R: Read + Seek> Reader<R> {
+    pub fn new(reader: R) -> Result<Reader<R>> {
         let mut reader = Box::new(reader);
 
         let buffer_size = 4096;
         let buffer = unsafe { ffi::av_malloc(buffer_size) };
         if buffer.is_null() {
-            return Err(Error::new_oom("avio buffer"));
+            return Err(Error::new_oom("av_malloc"));
         }
 
         unsafe extern "C" fn read<T: Read + Seek>(
@@ -108,21 +108,21 @@ impl<R: Read + Seek> ReaderContext<R> {
             )
         };
         if raw.is_null() {
-            return Err(Error::new_oom("avio context"));
+            return Err(Error::new_oom("avio_alloc_context"));
         }
 
-        Ok(ReaderContext {
+        Ok(Reader {
             _reader: reader,
             raw,
         })
     }
 
-    pub(crate) fn as_raw(&mut self) -> *mut ffi::AVIOContext {
+    pub fn as_raw(&mut self) -> *mut ffi::AVIOContext {
         self.raw
     }
 }
 
-impl<T> Drop for ReaderContext<T> {
+impl<T> Drop for Reader<T> {
     fn drop(&mut self) {
         unsafe {
             if !(*self.raw).buffer.is_null() {
