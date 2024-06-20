@@ -20,6 +20,7 @@ pub fn init() {
 
     INIT.call_once(|| unsafe {
         ffi::av_log_set_level(ffi::AV_LOG_TRACE);
+        ffi::av_log_set_flags(0);
         ffi::av_log_set_callback(Some(log_callback))
     });
 }
@@ -27,8 +28,8 @@ pub fn init() {
 unsafe extern "C" fn log_callback(
     ptr: *mut c_void,
     level: c_int,
-    format: *const c_char,
-    args: *mut ffi::__va_list_tag,
+    fmt: *const c_char,
+    vl: *mut ffi::__va_list_tag,
 ) {
     let enabled = match level {
         ffi::AV_LOG_TRACE | ffi::AV_LOG_DEBUG => {
@@ -47,20 +48,37 @@ unsafe extern "C" fn log_callback(
         return;
     }
 
+    let mut print_prefix = 1;
     let mut buf = [0u8; 4096];
-    let len = ffi::vsnprintf(buf.as_mut_ptr() as *mut _, 4096, format, args) as usize;
+
+    let len = unsafe {
+        ffi::av_log_format_line2(
+            ptr,
+            level,
+            fmt,
+            vl,
+            buf.as_mut_ptr() as *mut _,
+            4096,
+            &mut print_prefix,
+        )
+    };
+
+    let Ok(len) = usize::try_from(len) else {
+        return;
+    };
+
     let msg = String::from_utf8_lossy(&buf[..len.min(buf.len())]);
     let msg = msg.trim_end();
 
     match level {
         ffi::AV_LOG_TRACE | ffi::AV_LOG_DEBUG => {
-            tracing::trace!(target: "ffmpeg", ?ptr, "{msg}")
+            tracing::trace!(target: "ffmpeg", "{msg}")
         }
-        ffi::AV_LOG_VERBOSE => tracing::debug!(target: "ffmpeg", ?ptr, "{msg}"),
-        ffi::AV_LOG_INFO => tracing::info!(target: "ffmpeg", ?ptr, "{msg}"),
-        ffi::AV_LOG_WARNING => tracing::warn!(target: "ffmpeg", ?ptr, "{msg}"),
+        ffi::AV_LOG_VERBOSE => tracing::debug!(target: "ffmpeg", "{msg}"),
+        ffi::AV_LOG_INFO => tracing::info!(target: "ffmpeg", "{msg}"),
+        ffi::AV_LOG_WARNING => tracing::warn!(target: "ffmpeg", "{msg}"),
         ffi::AV_LOG_ERROR | ffi::AV_LOG_FATAL | ffi::AV_LOG_PANIC => {
-            tracing::error!(target: "ffmpeg", ?ptr, "{msg}")
+            tracing::error!(target: "ffmpeg", "{msg}")
         }
         _ => {}
     }
