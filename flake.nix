@@ -36,7 +36,7 @@
             vulkan-loader
             vulkan-validation-layers
             wayland
-            ffmpeg
+            (enableDebugging ffmpeg)
           ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;

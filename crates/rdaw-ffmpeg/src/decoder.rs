@@ -4,15 +4,24 @@ use ffmpeg_sys_next as ffi;
 
 use crate::{Error, FilledFrame, FilledPacket, Frame, Result};
 
+#[derive(Debug)]
 pub struct Decoder {
     raw: *mut ffi::AVCodecContext,
 }
 
 impl Decoder {
-    pub(crate) fn new(codec: *const ffi::AVCodec) -> Result<Decoder> {
+    pub(crate) fn new(
+        codec: *const ffi::AVCodec,
+        codecpar: *const ffi::AVCodecParameters,
+    ) -> Result<Decoder> {
         let raw = unsafe { ffi::avcodec_alloc_context3(codec) };
         if raw.is_null() {
             return Err(Error::new_oom("avcodec"));
+        }
+
+        let res = unsafe { ffi::avcodec_parameters_to_context(raw, codecpar) };
+        if res < 0 {
+            return Err(Error::new(res, "avcodec_open2"));
         }
 
         let res = unsafe { ffi::avcodec_open2(raw, codec, null_mut()) };

@@ -1,4 +1,5 @@
 use std::io::{Read, Seek};
+use std::mem::ManuallyDrop;
 
 use ffmpeg_sys_next as ffi;
 use rdaw_api::audio::AudioMetadata;
@@ -7,6 +8,7 @@ use rdaw_api::Result;
 use crate::resample::{Resampler, ResamplerConfig};
 use crate::{Decoder, ErrorKind, Frame, InputContext, Packet, StreamIdx};
 
+#[derive(Debug)]
 pub struct MediaInput<R> {
     context: InputContext<R>,
 }
@@ -38,23 +40,17 @@ impl<R: Read + Seek> rdaw_api::media::MediaInput for MediaInput<R> {
             None
         } else {
             Some(Resampler::new(ResamplerConfig {
-                out_ch_layout: raw_metadata.ch_layout,
-                out_sample_fmt: ffi::AVSampleFormat::AV_SAMPLE_FMT_FLT,
+                out_ch_layout: raw_metadata.channel_layout,
+                out_sample_format: target_format,
                 out_sample_rate: raw_metadata.sample_rate,
-                in_ch_layout: raw_metadata.ch_layout,
-                in_sample_fmt: raw_metadata.sample_format,
+                in_ch_layout: raw_metadata.channel_layout,
+                in_sample_format: raw_metadata.sample_format,
                 in_sample_rate: raw_metadata.sample_rate,
             })?)
         };
 
         let packet = Packet::new()?;
-
         let frame = Frame::new()?;
-        let resampler_frame = if resampler.is_some() {
-            Some(Frame::new()?)
-        } else {
-            None
-        };
 
         Ok(Some(Box::new(AudioInputStream {
             metadata,
@@ -64,12 +60,11 @@ impl<R: Read + Seek> rdaw_api::media::MediaInput for MediaInput<R> {
             resampler,
             packet,
             frame,
-            resampler_frame,
         })))
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct AudioInputStream<'media, R> {
     media: &'media mut MediaInput<R>,
     metadata: AudioMetadata,
@@ -78,7 +73,6 @@ pub struct AudioInputStream<'media, R> {
     resampler: Option<Resampler>,
     packet: Packet,
     frame: Frame,
-    resampler_frame: Option<Frame>,
 }
 
 impl<'media, R: Read + Seek> rdaw_api::audio::AudioInputStream<'media>
@@ -89,38 +83,55 @@ impl<'media, R: Read + Seek> rdaw_api::audio::AudioInputStream<'media>
     }
 
     fn next_frame(&mut self) -> Result<&[f32]> {
-        let frame = loop {
+        loop {
             let packet = match self.media.context.read_packet(&mut self.packet) {
-                Ok(v) => v,
-                Err(e) if e.kind() == ErrorKind::Eof => return Ok(&[]),
+                Ok(v) => Some(v),
+                Err(e) if e.kind() == ErrorKind::Eof => None,
                 Err(e) => return Err(e.into()),
             };
 
-            if packet.stream_idx() != self.stream_idx {
-                continue;
+            if let Some(packet) = packet {
+                if packet.stream_idx() != self.stream_idx {
+                    continue;
+                }
+
+                self.decoder.send_packet(packet)?;
+            } else {
+                self.decoder.flush()?;
             }
 
-            self.decoder.send_packet(packet)?;
-
             let frame = match self.decoder.recv_frame(&mut self.frame) {
-                Ok(v) => v,
-                Err(e) if e.kind() == ErrorKind::Eof => return Ok(&[]),
+                Ok(v) => Some(v),
+                Err(e) if e.kind() == ErrorKind::Eof => None,
                 Err(e) if e.kind() == ErrorKind::Again => continue,
                 Err(e) => return Err(e.into()),
             };
 
             let Some(resampler) = self.resampler.as_mut() else {
-                break frame;
+                if let Some(frame) = frame {
+                    let frame = ManuallyDrop::new(frame);
+                    let data = unsafe { frame.get_data() };
+                    return Ok(unsafe {
+                        std::slice::from_raw_parts(data.as_ptr() as *const f32, data.len() / 4)
+                    });
+                } else {
+                    return Ok(&[]);
+                }
             };
 
-            let resampler_frame = self.resampler_frame.as_mut().unwrap();
-            let frame = resampler.convert(frame, resampler_frame)?;
-            break frame;
-        };
-
-        let samples = unsafe { frame.get_f32_samples() };
-
-        // evil lifetime extension due to borrowck restrictions
-        Ok(unsafe { std::slice::from_raw_parts(samples.as_ptr(), samples.len()) })
+            if let Some(frame) = frame {
+                let frame = ManuallyDrop::new(frame);
+                let data = unsafe { frame.get_data() };
+                let data = resampler.convert(data)?;
+                return Ok(unsafe {
+                    std::slice::from_raw_parts(data.as_ptr() as *const f32, data.len() / 4)
+                });
+            } else {
+                let data = resampler.flush()?;
+                return Ok(unsafe {
+                    std::slice::from_raw_parts(data.as_ptr() as *const f32, data.len() / 4)
+                });
+            }
+        }
     }
 }

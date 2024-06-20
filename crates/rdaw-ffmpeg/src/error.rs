@@ -34,7 +34,7 @@ impl Error {
         let c = self.code;
         match self.code {
             _ if c == ffi::AVERROR_EOF => ErrorKind::Eof,
-            _ if c == ffi::AVERROR(ffi::EAGAIN) => ErrorKind::Eof,
+            _ if c == ffi::AVERROR(ffi::EAGAIN) => ErrorKind::Again,
             _ if c == ffi::AVERROR(ffi::ENOMEM) => ErrorKind::OutOfMemory,
             _ => ErrorKind::Other,
         }

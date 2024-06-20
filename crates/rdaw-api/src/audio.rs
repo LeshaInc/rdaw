@@ -2,7 +2,7 @@ use rdaw_core::time::RealTime;
 
 use crate::Result;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioMetadata {
     pub channels: Vec<AudioChannel>,
     pub sample_rate: u32,

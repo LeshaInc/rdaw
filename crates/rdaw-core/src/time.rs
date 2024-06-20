@@ -19,7 +19,7 @@ impl RealTime {
     }
 
     pub fn from_secs(secs: i64) -> RealTime {
-        RealTime::from_nanos(secs / NANOS_IN_SEC)
+        RealTime::from_nanos(secs * NANOS_IN_SEC)
     }
 
     pub fn from_secs_f32(secs: f32) -> RealTime {

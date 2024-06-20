@@ -4,6 +4,7 @@ use ffmpeg_sys_next as ffi;
 
 use crate::{Error, Result};
 
+#[derive(Debug)]
 pub struct Frame {
     raw: *mut ffi::AVFrame,
 }
@@ -38,20 +39,20 @@ impl Drop for Frame {
     }
 }
 
+#[derive(Debug)]
 pub struct FilledFrame<'a> {
     raw: *mut ffi::AVFrame,
     _packet: PhantomData<&'a mut Frame>,
 }
 
 impl FilledFrame<'_> {
-    pub(crate) fn as_raw(&self) -> *const ffi::AVFrame {
-        self.raw as _
-    }
-
-    pub(crate) unsafe fn get_f32_samples(&self) -> &[f32] {
-        let num_samples =
-            ((*self.raw).nb_samples as usize) * ((*self.raw).ch_layout.nb_channels as usize);
-        std::slice::from_raw_parts((*self.raw).data[0] as *const f32, num_samples)
+    pub(crate) unsafe fn get_data(&self) -> &[u8] {
+        let bytes_per_sample =
+            ffi::av_get_bytes_per_sample(std::mem::transmute((*self.raw).format)) as usize;
+        let len = ((*self.raw).nb_samples as usize)
+            * ((*self.raw).ch_layout.nb_channels as usize)
+            * bytes_per_sample;
+        std::slice::from_raw_parts((*self.raw).data[0] as *const u8, len)
     }
 }
 

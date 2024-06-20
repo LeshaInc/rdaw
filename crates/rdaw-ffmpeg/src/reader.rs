@@ -5,6 +5,7 @@ use ffmpeg_sys_next as ffi;
 
 use crate::{Error, Result};
 
+#[derive(Debug)]
 pub struct ReaderContext<R> {
     raw: *mut ffi::AVIOContext,
     _reader: Box<R>,

@@ -7,6 +7,7 @@ use rdaw_core::time::RealTime;
 
 use crate::{Decoder, Error, FilledPacket, Packet, ReaderContext, Result, StreamIdx};
 
+#[derive(Debug)]
 pub struct InputContext<R> {
     _reader: ReaderContext<R>,
     raw: *mut ffi::AVFormatContext,
@@ -66,7 +67,15 @@ impl<R: Read + Seek> InputContext<R> {
         }
 
         let stream_idx = StreamIdx(res);
-        let decoder = Decoder::new(codec)?;
+
+        let streams = unsafe {
+            std::slice::from_raw_parts((*self.raw).streams, (*self.raw).nb_streams as usize)
+        };
+
+        let stream = unsafe { &*streams[stream_idx.0 as usize] };
+        let codecpar = stream.codecpar;
+
+        let decoder = Decoder::new(codec, codecpar)?;
 
         Ok(Some((stream_idx, decoder)))
     }
@@ -82,25 +91,24 @@ impl<R: Read + Seek> InputContext<R> {
             .find(|&v| unsafe { (*v).index == idx.0 })
             .expect("no such stream");
 
-        let codecpar = unsafe { (*stream).codecpar };
+        let stream = unsafe { &*stream };
+        let codecpar = unsafe { &*stream.codecpar };
 
-        Ok(unsafe {
-            RawAudioMetadata {
-                ch_layout: (*codecpar).ch_layout,
-                sample_format: std::mem::transmute((*codecpar).format),
-                sample_rate: (*codecpar).sample_rate,
-                duration_ns: (*stream).duration * ((*stream).time_base.num as i64)
-                    / ((*stream).time_base.den as i64),
-            }
+        Ok(RawAudioMetadata {
+            channel_layout: &codecpar.ch_layout,
+            sample_format: unsafe { std::mem::transmute(codecpar.format) },
+            sample_rate: codecpar.sample_rate,
+            duration_ns: stream.duration * (stream.time_base.num as i64) * 1_000_000_000
+                / (stream.time_base.den as i64),
         })
     }
 
     pub fn get_audio_stream_metadata(&self, idx: StreamIdx) -> Result<AudioMetadata> {
         let raw = self.get_audio_stream_raw_metadata(idx)?;
         Ok(AudioMetadata {
-            channels: convert_channel_layout(raw.ch_layout),
+            channels: convert_channel_layout(raw.channel_layout),
             sample_rate: raw.sample_rate as u32,
-            sample_format: convert_sample_format(raw.sample_rate),
+            sample_format: convert_sample_format(raw.sample_format),
             duration: RealTime::from_nanos(raw.duration_ns),
         })
     }
@@ -122,8 +130,8 @@ impl<R> Drop for InputContext<R> {
     }
 }
 
-pub struct RawAudioMetadata {
-    pub ch_layout: ffi::AVChannelLayout,
+pub struct RawAudioMetadata<'a> {
+    pub channel_layout: &'a ffi::AVChannelLayout,
     pub sample_format: ffi::AVSampleFormat,
     pub sample_rate: i32,
     pub duration_ns: i64,
@@ -165,7 +173,7 @@ const CHANNEL_MAPPING: [(ffi::AVChannel, AudioChannel); 30] = [
     (ffi::AVChannel::AV_CHAN_SURROUND_DIRECT_RIGHT, AudioChannel::FrontRight),
 ];
 
-fn convert_channel_layout(layout: ffi::AVChannelLayout) -> Vec<AudioChannel> {
+fn convert_channel_layout(layout: &ffi::AVChannelLayout) -> Vec<AudioChannel> {
     if layout.nb_channels <= 0 {
         return vec![];
     }
@@ -206,17 +214,17 @@ fn convert_channel_layout(layout: ffi::AVChannelLayout) -> Vec<AudioChannel> {
     }
 }
 
-fn convert_sample_format(format: i32) -> SampleFormat {
+fn convert_sample_format(format: ffi::AVSampleFormat) -> SampleFormat {
     match format {
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_U8 as i32 => SampleFormat::U8,
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_S16 as i32 => SampleFormat::I16,
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_FLT as i32 => SampleFormat::F32,
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_DBL as i32 => SampleFormat::F64,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_U8 => SampleFormat::U8,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_S16 => SampleFormat::I16,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_FLT => SampleFormat::F32,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_DBL => SampleFormat::F64,
 
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_U8P as i32 => SampleFormat::U8,
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_S16P as i32 => SampleFormat::I16,
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_FLTP as i32 => SampleFormat::F32,
-        _ if format == ffi::AVSampleFormat::AV_SAMPLE_FMT_DBLP as i32 => SampleFormat::F64,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_U8P => SampleFormat::U8,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_S16P => SampleFormat::I16,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_FLTP => SampleFormat::F32,
+        ffi::AVSampleFormat::AV_SAMPLE_FMT_DBLP => SampleFormat::F64,
 
         _ => SampleFormat::Other,
     }

@@ -4,6 +4,7 @@ use ffmpeg_sys_next as ffi;
 
 use crate::{Error, Result, StreamIdx};
 
+#[derive(Debug)]
 pub struct Packet {
     raw: *mut ffi::AVPacket,
 }
@@ -38,6 +39,7 @@ impl Drop for Packet {
     }
 }
 
+#[derive(Debug)]
 pub struct FilledPacket<'a> {
     raw: *mut ffi::AVPacket,
     _packet: PhantomData<&'a mut Packet>,

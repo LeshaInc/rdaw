@@ -28,7 +28,7 @@ crossbeam-queue = "0.3.11"
 crossbeam-utils = "0.8.19"
 darling = "0.20.9"
 dashmap = "5.5"
-ffmpeg-sys-next = "7.0"
+ffmpeg-sys-next = { version = "6.1.0", features = ["avformat", "avcodec", "swresample"] }
 fixed = { version = "2.0.0-alpha.27.0", features = ["serde"] }
 floem = { git = "https://github.com/lapce/floem.git", rev = "83a0384033edd2bbfd5888dd8c6586ca22ae0246" }
 futures = { version = "0.3.30", features = ["thread-pool"] }
