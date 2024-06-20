@@ -3,7 +3,7 @@ use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rdaw_api::document::DocumentOperations;
-use rdaw_api::track::{TrackEvent, TrackHierarchyEvent, TrackNode, TrackOperations};
+use rdaw_api::track::{TrackHierarchyEvent, TrackNode, TrackOperations};
 use rdaw_api::{assert_err, ErrorKind, Result};
 
 use crate::tests::{invalid_track_id, run_test};
@@ -30,26 +30,21 @@ fn list_tracks() -> Result<()> {
 }
 
 #[test]
-fn subscribe_track() -> Result<()> {
+fn subscribe_track_name() -> Result<()> {
     run_test(|client| async move {
         let document_id = client.create_document().await?;
 
         assert_err!(
-            client.subscribe_track(invalid_track_id()).await,
+            client.subscribe_track_name(invalid_track_id()).await,
             ErrorKind::InvalidId,
         );
 
         let track = client.create_track(document_id).await?;
-        let mut stream = client.subscribe_track(track).await?;
+        let mut stream = client.subscribe_track_name(track).await?;
 
         client.set_track_name(track, "New name".into()).await?;
 
-        assert_eq!(
-            stream.next().await,
-            Some(TrackEvent::NameChanged {
-                new_name: "New name".into()
-            })
-        );
+        assert_eq!(stream.next().await, Some("New name".into()));
 
         Ok(())
     })
