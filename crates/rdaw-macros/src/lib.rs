@@ -303,6 +303,10 @@ pub fn rpc_protocol(args: TokenStream, item: TokenStream) -> TokenStream {
         #res_enum
         #event_enum
 
+        #vis trait #ident_prefix: 'static + Sync #(+ #ops_traits)* {}
+
+        impl<T> #ident_prefix for T where T: 'static + Sync #(+ #ops_traits)* {}
+
         #[automatically_derived]
         impl rdaw_rpc::Protocol for #ident {
             type Req = #req_enum_ident;

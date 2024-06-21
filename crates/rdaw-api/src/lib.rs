@@ -20,29 +20,6 @@ use std::pin::Pin;
 use futures::Stream;
 
 pub use self::error::{Error, ErrorKind, Result};
-
-pub trait Backend:
-    self::arrangement::ArrangementOperations
-    + self::asset::AssetOperations
-    + self::source::AudioSourceOperations
-    + self::document::DocumentOperations
-    + self::track::TrackOperations
-    + Sync
-    + 'static
-{
-}
-
-impl<T> Backend for T where
-    T: self::arrangement::ArrangementOperations
-        + self::asset::AssetOperations
-        + self::source::AudioSourceOperations
-        + self::document::DocumentOperations
-        + self::track::TrackOperations
-        + Sync
-        + 'static
-{
-}
-
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
 
 #[rdaw_rpc::protocol(
