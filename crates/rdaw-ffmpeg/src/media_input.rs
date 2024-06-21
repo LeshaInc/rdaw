@@ -23,14 +23,14 @@ impl<R: Read + Seek> rdaw_api::media::OpenMediaInput<R> for MediaInput<R> {
 }
 
 impl<R: Read + Seek> rdaw_api::media::MediaInput for MediaInput<R> {
-    fn get_audio_stream(
-        &mut self,
-    ) -> Result<Option<Box<dyn rdaw_api::audio::AudioInputStream<'_> + '_>>> {
+    type AudioInputStream<'a> = AudioInputStream<'a, R> where Self: 'a;
+
+    fn get_audio_stream(&mut self) -> Result<Option<AudioInputStream<'_, R>>> {
         let Some((stream_idx, decoder)) = self.context.find_audio_stream()? else {
             return Ok(None);
         };
 
         let stream = AudioInputStream::new(self, stream_idx, decoder)?;
-        Ok(Some(Box::new(stream)))
+        Ok(Some(stream))
     }
 }

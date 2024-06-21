@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::path::PathBuf;
 
-use rdaw_api::audio::{AudioChannel, AudioMetadata, SampleFormat};
+use rdaw_api::audio::{AudioChannel, AudioInputStream as _, AudioMetadata, SampleFormat};
 use rdaw_api::media::{MediaInput as _, OpenMediaInput as _};
 use rdaw_api::Result;
 use rdaw_core::time::RealTime;

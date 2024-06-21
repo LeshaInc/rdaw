@@ -6,5 +6,9 @@ pub trait OpenMediaInput<R>: Sized {
 }
 
 pub trait MediaInput {
-    fn get_audio_stream(&mut self) -> Result<Option<Box<dyn AudioInputStream<'_> + '_>>>;
+    type AudioInputStream<'a>: AudioInputStream<'a>
+    where
+        Self: 'a;
+
+    fn get_audio_stream(&mut self) -> Result<Option<Self::AudioInputStream<'_>>>;
 }
