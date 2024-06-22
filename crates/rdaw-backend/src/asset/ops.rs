@@ -1,8 +1,10 @@
+use std::fs::File;
 use std::io::Write;
 
 use blake3::Hasher;
 use rdaw_api::asset::{AssetId, AssetOperations, AssetRequest, AssetResponse};
 use rdaw_api::document::DocumentId;
+use rdaw_api::error::ResultExt;
 use rdaw_api::{BackendProtocol, Error, Result};
 use rdaw_core::path::Utf8PathBuf;
 use rdaw_rpc::Responder;
@@ -25,22 +27,31 @@ impl Backend {
     ) -> Result<()> {
         self.documents.ensure_has(document_id)?;
 
+        let file = File::open(&path).with_context(|| format!("failed to open `{path}`]"))?;
+
         let queue = self.queue.clone();
-        self.thread_pool.spawn_ok(async move {
+        self.spawn(async move {
             let mut hasher = Hasher::new();
-            hasher.update_mmap(&path).unwrap();
+
+            hasher
+                .update_reader(file)
+                .with_context(|| format!("failed to read `{path}`]"))?;
+
             let hash = hasher.finalize();
+            let size = hasher.count();
+
+            let asset = Asset::External(ExternalAsset { path, hash, size });
 
             queue.defer(move |this: &mut Backend| {
-                let asset = Asset::External(ExternalAsset { path, hash });
-
                 let asset_id = this
                     .hub
                     .assets
                     .insert(ObjectKey::new_random(document_id), asset);
 
                 responder.respond(Ok(asset_id))
-            })
+            });
+
+            Ok(())
         });
 
         Ok(())
@@ -50,21 +61,33 @@ impl Backend {
     #[handler]
     pub fn create_embedded_asset(
         &mut self,
+        responder: impl Responder<AssetId, Error>,
         document_id: DocumentId,
         data: Vec<u8>,
-    ) -> Result<AssetId> {
+    ) -> Result<()> {
         let document = self.documents.get_or_err(document_id)?;
-
         let mut blob = document.create_blob(Compression::Zstd)?;
-        blob.write_all(&data)?;
-        let hash = blob.save()?;
 
-        let asset = Asset::Embedded(EmbeddedAsset { hash });
-        let asset_id = self
-            .hub
-            .assets
-            .insert(ObjectKey::new_random(document_id), asset);
+        let queue = self.queue.clone();
+        self.spawn(async move {
+            blob.write_all(&data)?;
+            let hash = blob.save()?;
+            let size = data.len() as u64;
 
-        Ok(asset_id)
+            let asset = Asset::Embedded(EmbeddedAsset { hash, size });
+
+            queue.defer(move |this: &mut Backend| {
+                let asset_id = this
+                    .hub
+                    .assets
+                    .insert(ObjectKey::new_random(document_id), asset);
+
+                responder.respond(Ok(asset_id))
+            });
+
+            Ok(())
+        });
+
+        Ok(())
     }
 }

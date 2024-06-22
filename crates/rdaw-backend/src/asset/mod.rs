@@ -22,11 +22,13 @@ pub enum Asset {
 pub struct ExternalAsset {
     pub path: Utf8PathBuf,
     pub hash: Hash,
+    pub size: u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct EmbeddedAsset {
     pub hash: Hash,
+    pub size: u64,
 }
 
 impl Object for Asset {

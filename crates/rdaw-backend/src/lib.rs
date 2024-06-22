@@ -107,6 +107,14 @@ impl Backend {
             self.update().await?;
         }
     }
+
+    fn spawn(&self, fut: impl Future<Output = Result<()>> + Send + 'static) {
+        self.thread_pool.spawn_ok(async move {
+            if let Err(error) = fut.await {
+                tracing::error!(?error);
+            }
+        })
+    }
 }
 
 pub trait DeferredTask: Send + 'static {

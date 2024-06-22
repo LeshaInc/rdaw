@@ -13,8 +13,12 @@ pub fn serialize(_ctx: &mut SerializationContext<'_>, asset: &Asset) -> Result<V
         Asset::External(asset) => AssetLatest::External {
             path: &asset.path,
             hash: asset.hash,
+            size: asset.size,
         },
-        Asset::Embedded(asset) => AssetLatest::Embedded { hash: asset.hash },
+        Asset::Embedded(asset) => AssetLatest::Embedded {
+            hash: asset.hash,
+            size: asset.size,
+        },
     };
 
     encoding::serialize(Version::LATEST.as_u32(), &raw)
@@ -27,11 +31,12 @@ pub fn deserialize(_ctx: &mut DeserializationContext<'_>, data: &[u8]) -> Result
     };
 
     let asset = match raw {
-        AssetV1::External { path, hash } => Asset::External(ExternalAsset {
+        AssetV1::External { path, hash, size } => Asset::External(ExternalAsset {
             path: path.into(),
             hash,
+            size,
         }),
-        AssetV1::Embedded { hash } => Asset::Embedded(EmbeddedAsset { hash }),
+        AssetV1::Embedded { hash, size } => Asset::Embedded(EmbeddedAsset { hash, size }),
     };
 
     Ok(asset)
@@ -51,8 +56,10 @@ enum AssetV1<'a> {
         #[serde(borrow)]
         path: &'a Utf8Path,
         hash: Hash,
+        size: u64,
     },
     Embedded {
         hash: Hash,
+        size: u64,
     },
 }

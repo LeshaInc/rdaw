@@ -244,9 +244,17 @@ fn capture_backtrace() -> Vec<Location> {
 }
 
 pub trait ResultExt<T, E> {
+    fn convert_err_with<F: FnOnce(&E) -> ErrorKind>(self, get_kind: F) -> Result<T, Error>;
+
     fn convert_err(self, kind: ErrorKind) -> Result<T, Error>;
 
-    fn convert_err_with<F: FnOnce(&E) -> ErrorKind>(self, get_kind: F) -> Result<T, Error>;
+    fn with_context<M: fmt::Display, F: FnOnce() -> M>(self, get_context: F) -> Result<T, Error>
+    where
+        Error: From<E>;
+
+    fn context<M: fmt::Display>(self, message: M) -> Result<T, Error>
+    where
+        Error: From<E>;
 }
 
 impl<T, E: std::error::Error> ResultExt<T, E> for Result<T, E> {
@@ -266,6 +274,28 @@ impl<T, E: std::error::Error> ResultExt<T, E> for Result<T, E> {
                 let kind = get_kind(&e);
                 Err(Error::new(kind, e))
             }
+        }
+    }
+
+    #[track_caller]
+    fn with_context<M: fmt::Display, F: FnOnce() -> M>(self, get_message: F) -> Result<T, Error>
+    where
+        Error: From<E>,
+    {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(Error::from(e).context(get_message())),
+        }
+    }
+
+    #[track_caller]
+    fn context<M: fmt::Display>(self, message: M) -> Result<T, Error>
+    where
+        Error: From<E>,
+    {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(Error::from(e).context(message)),
         }
     }
 }
