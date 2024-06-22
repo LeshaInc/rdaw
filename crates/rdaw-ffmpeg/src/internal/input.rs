@@ -100,7 +100,9 @@ impl<R: Read + Seek> InputContext<R> {
 
         Ok(RawAudioMetadata {
             channel_layout: &codecpar.ch_layout,
-            sample_format: unsafe { std::mem::transmute(codecpar.format) },
+            sample_format: unsafe {
+                std::mem::transmute::<i32, ffi::AVSampleFormat>(codecpar.format)
+            },
             sample_rate: codecpar.sample_rate,
             duration_ns: stream.duration * (stream.time_base.num as i64) * 1_000_000_000
                 / (stream.time_base.den as i64),

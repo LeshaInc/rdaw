@@ -393,9 +393,7 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
             })
             .collect::<Vec<_>>();
 
-        let has_responder = args
-            .get(0)
-            .is_some_and(|arg| arg.to_string() == "responder");
+        let has_responder = args.first().is_some_and(|arg| arg == "responder");
 
         let match_case = if has_responder {
             args.remove(0);

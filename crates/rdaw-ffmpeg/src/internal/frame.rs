@@ -47,8 +47,8 @@ pub struct FilledFrame<'a> {
 
 impl FilledFrame<'_> {
     pub unsafe fn get_data(&self) -> &[u8] {
-        let bytes_per_sample =
-            ffi::av_get_bytes_per_sample(std::mem::transmute((*self.raw).format)) as usize;
+        let sample_format = std::mem::transmute::<i32, ffi::AVSampleFormat>((*self.raw).format);
+        let bytes_per_sample = ffi::av_get_bytes_per_sample(sample_format) as usize;
         let len = ((*self.raw).nb_samples as usize)
             * ((*self.raw).ch_layout.nb_channels as usize)
             * bytes_per_sample;
