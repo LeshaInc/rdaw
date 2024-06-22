@@ -5,12 +5,12 @@ use blake3::Hasher;
 use rdaw_api::asset::{AssetId, AssetMetadata, AssetOperations, AssetRequest, AssetResponse};
 use rdaw_api::document::DocumentId;
 use rdaw_api::error::ResultExt;
-use rdaw_api::{BackendProtocol, Error, Result};
+use rdaw_api::{bail, BackendProtocol, Error, ErrorKind, Result};
 use rdaw_core::path::Utf8PathBuf;
 use rdaw_rpc::Responder;
 use tracing::instrument;
 
-use super::{Asset, EmbeddedAsset, ExternalAsset};
+use super::{Asset, AssetReader, EmbeddedAsset, ExternalAsset};
 use crate::document::Compression;
 use crate::object::ObjectKey;
 use crate::Backend;
@@ -100,5 +100,25 @@ impl Backend {
             hash: asset.hash(),
             size: asset.size(),
         })
+    }
+
+    pub fn open_asset(&self, id: AssetId) -> Result<AssetReader> {
+        let asset = self.hub.assets.get_or_err(id)?;
+
+        match asset {
+            Asset::External(asset) => {
+                let path = &asset.path;
+                let file = File::open(path).with_context(|| format!("failed to open `{path}`]"))?;
+                Ok(AssetReader::from_file(file))
+            }
+            Asset::Embedded(asset) => {
+                let document_id = self.hub.assets.get_key_or_err(id)?.document_id;
+                let document = self.documents.get_or_err(document_id)?;
+                let Some(blob) = document.open_blob(asset.hash)? else {
+                    bail!(ErrorKind::NotFound, "blob `{}` not found", asset.hash);
+                };
+                Ok(AssetReader::from_blob(blob))
+            }
+        }
     }
 }

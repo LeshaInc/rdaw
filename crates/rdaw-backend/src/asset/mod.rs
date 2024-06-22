@@ -1,5 +1,6 @@
 mod encoding;
 mod ops;
+mod reader;
 #[cfg(test)]
 mod tests;
 
@@ -8,6 +9,7 @@ use rdaw_api::asset::AssetId;
 use rdaw_api::Result;
 use rdaw_core::path::{Utf8Path, Utf8PathBuf};
 
+pub use self::reader::AssetReader;
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
 impl ObjectId for AssetId {
