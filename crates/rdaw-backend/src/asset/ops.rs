@@ -3,8 +3,9 @@ use std::io::Write;
 use blake3::Hasher;
 use rdaw_api::asset::{AssetId, AssetOperations, AssetRequest, AssetResponse};
 use rdaw_api::document::DocumentId;
-use rdaw_api::{BackendProtocol, Result};
+use rdaw_api::{BackendProtocol, Error, Result};
 use rdaw_core::path::Utf8PathBuf;
+use rdaw_rpc::Responder;
 use tracing::instrument;
 
 use super::{Asset, EmbeddedAsset, ExternalAsset};
@@ -18,20 +19,31 @@ impl Backend {
     #[handler]
     pub fn create_external_asset(
         &mut self,
+        responder: impl Responder<AssetId, Error>,
         document_id: DocumentId,
         path: Utf8PathBuf,
-    ) -> Result<AssetId> {
-        let mut hasher = Hasher::new();
-        hasher.update_mmap(&path)?;
-        let hash = hasher.finalize();
+    ) -> Result<()> {
+        self.documents.ensure_has(document_id)?;
 
-        let asset = Asset::External(ExternalAsset { path, hash });
-        let asset_id = self
-            .hub
-            .assets
-            .insert(ObjectKey::new_random(document_id), asset);
+        let queue = self.queue.clone();
+        self.thread_pool.spawn_ok(async move {
+            let mut hasher = Hasher::new();
+            hasher.update_mmap(&path).unwrap();
+            let hash = hasher.finalize();
 
-        Ok(asset_id)
+            queue.defer(move |this: &mut Backend| {
+                let asset = Asset::External(ExternalAsset { path, hash });
+
+                let asset_id = this
+                    .hub
+                    .assets
+                    .insert(ObjectKey::new_random(document_id), asset);
+
+                responder.respond(Ok(asset_id))
+            })
+        });
+
+        Ok(())
     }
 
     #[instrument(level = "trace", skip_all, err)]

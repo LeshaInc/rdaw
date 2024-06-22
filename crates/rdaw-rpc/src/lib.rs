@@ -3,6 +3,9 @@ mod id_allocator;
 mod subscribers;
 pub mod transport;
 
+use std::future::Future;
+use std::marker::PhantomData;
+
 pub use rdaw_macros::{
     rpc_handler as handler, rpc_operations as operations, rpc_protocol as protocol,
 };
@@ -71,4 +74,34 @@ pub enum ServerMessage<P: Protocol> {
     CloseStream {
         id: StreamId,
     },
+}
+
+pub trait Responder<Res, Err>: Send + 'static {
+    fn respond(self, response: Result<Res, Err>) -> impl Future<Output = Result<(), Err>> + Send;
+}
+
+pub struct ClosureResponder<C, Fut, Res, Err> {
+    closure: C,
+    marker: PhantomData<fn(Res, Err) -> Fut>,
+}
+
+impl<C, Fut, Res, Err> ClosureResponder<C, Fut, Res, Err> {
+    pub fn new(closure: C) -> ClosureResponder<C, Fut, Res, Err> {
+        ClosureResponder {
+            closure,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<C, Fut, Res, Err> Responder<Res, Err> for ClosureResponder<C, Fut, Res, Err>
+where
+    C: 'static + Send + FnOnce(Result<Res, Err>) -> Fut,
+    Fut: 'static + Future<Output = Result<(), Err>> + Send,
+    Res: 'static,
+    Err: 'static,
+{
+    fn respond(self, response: Result<Res, Err>) -> impl Future<Output = Result<(), Err>> + Send {
+        (self.closure)(response)
+    }
 }

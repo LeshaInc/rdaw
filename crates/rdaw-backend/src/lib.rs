@@ -9,9 +9,14 @@ pub mod tempo_map;
 pub mod tests;
 pub mod track;
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
+use async_channel::{Receiver, Sender};
 use document::DocumentStorage;
+use futures::executor::ThreadPool;
+use futures::{select_biased, FutureExt};
 use rdaw_api::{BackendProtocol, BackendRequest, ErrorKind, Result};
 use rdaw_rpc::transport::{LocalServerTransport, ServerTransport};
 use rdaw_rpc::{ClientMessage, StreamIdAllocator};
@@ -22,6 +27,9 @@ use self::track::TrackViewCache;
 #[derive(Debug)]
 pub struct Backend {
     transport: LocalServerTransport<BackendProtocol>,
+
+    thread_pool: ThreadPool,
+    queue: DeferredQueue,
 
     documents: DocumentStorage,
     hub: Hub,
@@ -36,6 +44,9 @@ impl Backend {
 
         Backend {
             transport,
+
+            thread_pool: ThreadPool::new().unwrap(),
+            queue: DeferredQueue::new(),
 
             documents: DocumentStorage::default(),
             hub: Hub::default(),
@@ -52,10 +63,19 @@ impl Backend {
 
     pub async fn handle(&mut self) -> Result<()> {
         loop {
-            let msg = match self.transport.recv().await {
-                Ok(v) => v,
-                Err(e) if e.kind() == ErrorKind::Disconnected => return Ok(()),
-                Err(e) => return Err(e),
+            let msg = select_biased! {
+                task = self.queue.receiver.recv().fuse() => {
+                    if let Ok(task) = task {
+                        task(self).await?;
+                    }
+                    continue
+                }
+
+                msg = self.transport.recv().fuse() => match msg {
+                    Ok(v) => v,
+                    Err(e) if e.kind() == ErrorKind::Disconnected => return Ok(()),
+                    Err(e) => return Err(e),
+                }
             };
 
             match msg {
@@ -86,5 +106,44 @@ impl Backend {
 
             self.update().await?;
         }
+    }
+}
+
+pub trait DeferredTask: Send + 'static {
+    fn run(self, backend: &mut Backend) -> impl Future<Output = Result<()>> + Send;
+}
+
+impl<Fn, Fut> DeferredTask for Fn
+where
+    Fn: FnOnce(&mut Backend) -> Fut,
+    Fn: Send + 'static,
+    Fut: Send + Future<Output = Result<()>>,
+{
+    fn run(self, backend: &mut Backend) -> impl Future<Output = Result<()>> {
+        self(backend)
+    }
+}
+
+type BoxedDeferredTask = Box<
+    dyn (for<'a> FnOnce(&'a mut Backend) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>)
+        + Send,
+>;
+
+#[derive(Debug, Clone)]
+pub struct DeferredQueue {
+    sender: Sender<BoxedDeferredTask>,
+    receiver: Receiver<BoxedDeferredTask>,
+}
+
+impl DeferredQueue {
+    fn new() -> Self {
+        let (sender, receiver) = async_channel::unbounded();
+        Self { sender, receiver }
+    }
+
+    pub fn defer(&self, task: impl DeferredTask) {
+        self.sender
+            .send_blocking(Box::new(move |b| Box::pin(task.run(b))))
+            .unwrap();
     }
 }

@@ -377,7 +377,7 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
             func.sig.ident.span(),
         );
 
-        let args = func
+        let mut args = func
             .sig
             .inputs
             .iter()
@@ -393,15 +393,39 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
             })
             .collect::<Vec<_>>();
 
-        let match_case = quote! {
-            #req_ident::#name { #(#args,)* } => {
-                let payload = self
-                    .#func_name(#(#args,)*)
-                    .map(#res_ident::#name)
-                    .map(|v| v.into());
-                transport
-                    .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
-                    .await
+        let has_responder = args
+            .get(0)
+            .is_some_and(|arg| arg.to_string() == "responder");
+
+        let match_case = if has_responder {
+            args.remove(0);
+            quote! {
+                #req_ident::#name { #(#args,)* } => {
+                    let responder = rdaw_rpc::ClosureResponder::new(move |res: Result<_, #error_path>| {
+                        let payload = res
+                            .map(#res_ident::#name)
+                            .map(|v| v.into());
+                        async move {
+                            transport
+                                .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
+                                .await
+                        }
+                    });
+
+                    self.#func_name(responder, #(#args,)*)
+                }
+            }
+        } else {
+            quote! {
+                #req_ident::#name { #(#args,)* } => {
+                    let payload = self
+                        .#func_name(#(#args,)*)
+                        .map(#res_ident::#name)
+                        .map(|v| v.into());
+                    transport
+                        .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
+                        .await
+                }
             }
         };
 
