@@ -1,5 +1,7 @@
 mod encoding;
 mod ops;
+#[cfg(test)]
+mod tests;
 
 use blake3::Hash;
 use rdaw_api::asset::AssetId;
