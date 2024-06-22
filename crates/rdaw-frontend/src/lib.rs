@@ -7,8 +7,9 @@ use std::sync::{Arc, Mutex};
 
 use floem::ext_event::{create_ext_action, register_ext_trigger};
 use floem::keyboard::{Key, Modifiers, NamedKey};
+use floem::peniko::Color;
 use floem::reactive::{provide_context, use_context, with_scope, RwSignal, Scope};
-use floem::views::{dyn_container, Decorators};
+use floem::views::{dyn_container, h_stack, Decorators};
 use floem::{IntoView, View};
 use futures::executor::{block_on, ThreadPool};
 use futures::task::SpawnExt;
@@ -18,12 +19,18 @@ use rdaw_api::document::DocumentId;
 use rdaw_api::{Backend, BoxStream, Error};
 use rdaw_ui_kit::Theme;
 
+use crate::views::tree::FsTreeModel;
+
 pub fn app_view(document_id: DocumentId, main_arrangement: ArrangementId) -> impl IntoView {
     provide_document_id(document_id);
 
-    views::arrangement(main_arrangement)
-        .style(|s| s.width_full().height_full())
-        .window_scale(move || 1.0)
+    h_stack((
+        views::tree(FsTreeModel)
+            .style(|s| s.width(500.0).border_right(1.0).border_color(Color::BLACK)),
+        views::arrangement(main_arrangement),
+    ))
+    .style(|s| s.width_full().height_full())
+    .window_scale(move || 1.0)
 }
 
 pub fn get_document_id() -> DocumentId {
