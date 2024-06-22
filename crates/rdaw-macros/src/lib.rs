@@ -360,17 +360,14 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
         };
 
         let mut is_handler = false;
-        let mut is_sub_handler = false;
 
         func.attrs.retain(|attr| {
             let this_is_handler = attr.path().is_ident("handler");
-            let this_is_sub_handler = attr.path().is_ident("sub_handler");
-            is_handler = this_is_handler;
-            is_sub_handler = this_is_sub_handler;
-            !(this_is_handler || this_is_sub_handler)
+            is_handler |= this_is_handler;
+            !this_is_handler
         });
 
-        if !(is_handler || is_sub_handler) {
+        if !is_handler {
             continue;
         }
 
@@ -396,29 +393,15 @@ pub fn rpc_handler(args: TokenStream, item: TokenStream) -> TokenStream {
             })
             .collect::<Vec<_>>();
 
-        let match_case = if is_sub_handler {
-            quote! {
-                #req_ident::#name { #(#args,)* } => {
-                    let payload = self
-                        .#func_name(#(#args,)*)
-                        .map(#res_ident::#name)
-                        .map(|v| v.into());
-                    transport
-                        .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
-                        .await
-                }
-            }
-        } else {
-            quote! {
-                #req_ident::#name { #(#args,)* } => {
-                    let payload = self
-                        .#func_name(#(#args,)*)
-                        .map(#res_ident::#name)
-                        .map(|v| v.into());
-                    transport
-                        .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
-                        .await
-                }
+        let match_case = quote! {
+            #req_ident::#name { #(#args,)* } => {
+                let payload = self
+                    .#func_name(#(#args,)*)
+                    .map(#res_ident::#name)
+                    .map(|v| v.into());
+                transport
+                    .send(rdaw_rpc::ServerMessage::Response { id: req_id, payload })
+                    .await
             }
         };
 
