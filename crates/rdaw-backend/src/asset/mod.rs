@@ -6,7 +6,7 @@ mod tests;
 use blake3::Hash;
 use rdaw_api::asset::AssetId;
 use rdaw_api::Result;
-use rdaw_core::path::Utf8PathBuf;
+use rdaw_core::path::{Utf8Path, Utf8PathBuf};
 
 use crate::object::{DeserializationContext, Object, ObjectId, ObjectType, SerializationContext};
 
@@ -18,6 +18,29 @@ impl ObjectId for AssetId {
 pub enum Asset {
     External(ExternalAsset),
     Embedded(EmbeddedAsset),
+}
+
+impl Asset {
+    pub fn path(&self) -> Option<&Utf8Path> {
+        match self {
+            Asset::External(v) => Some(&v.path),
+            Asset::Embedded(_) => None,
+        }
+    }
+
+    pub fn hash(&self) -> Hash {
+        match self {
+            Asset::External(v) => v.hash,
+            Asset::Embedded(v) => v.hash,
+        }
+    }
+
+    pub fn size(&self) -> u64 {
+        match self {
+            Asset::External(v) => v.size,
+            Asset::Embedded(v) => v.size,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

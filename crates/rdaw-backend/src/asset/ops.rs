@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Write;
 
 use blake3::Hasher;
-use rdaw_api::asset::{AssetId, AssetOperations, AssetRequest, AssetResponse};
+use rdaw_api::asset::{AssetId, AssetMetadata, AssetOperations, AssetRequest, AssetResponse};
 use rdaw_api::document::DocumentId;
 use rdaw_api::error::ResultExt;
 use rdaw_api::{BackendProtocol, Error, Result};
@@ -89,5 +89,16 @@ impl Backend {
         });
 
         Ok(())
+    }
+
+    #[instrument(level = "trace", skip_all, err)]
+    #[handler]
+    pub fn get_asset_metadata(&self, id: AssetId) -> Result<AssetMetadata> {
+        let asset = self.hub.assets.get_or_err(id)?;
+        Ok(AssetMetadata {
+            path: asset.path().map(|v| v.to_path_buf()),
+            hash: asset.hash(),
+            size: asset.size(),
+        })
     }
 }

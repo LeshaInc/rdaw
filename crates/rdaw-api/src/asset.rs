@@ -1,4 +1,6 @@
+use blake3::Hash;
 use rdaw_core::path::Utf8PathBuf;
+use serde::{Deserialize, Serialize};
 
 use crate::document::DocumentId;
 use crate::{BackendProtocol, Result};
@@ -20,4 +22,13 @@ pub trait AssetOperations {
         document_id: DocumentId,
         data: Vec<u8>,
     ) -> Result<AssetId>;
+
+    async fn get_asset_metadata(&self, id: AssetId) -> Result<AssetMetadata>;
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AssetMetadata {
+    pub path: Option<Utf8PathBuf>,
+    pub hash: Hash,
+    pub size: u64,
 }

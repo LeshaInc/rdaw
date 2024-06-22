@@ -7,6 +7,7 @@ edition = "2021"
 rdaw-core.workspace = true
 rdaw-rpc.workspace = true
 
+blake3.workspace = true
 fixed.workspace = true
 futures.workspace = true
 serde.workspace = true
