@@ -8,8 +8,6 @@ slotmap::new_key_type! {
 
 #[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait AudioSourceOperations {
-    async fn list_audio_sources(&self) -> Result<Vec<AudioSourceId>>;
-
     async fn create_audio_source(&self, asset_id: AssetId) -> Result<AudioSourceId>;
 
     #[sub]

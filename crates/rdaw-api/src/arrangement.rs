@@ -9,8 +9,6 @@ slotmap::new_key_type! {
 
 #[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait ArrangementOperations {
-    async fn list_arrangements(&self) -> Result<Vec<ArrangementId>>;
-
     async fn create_arrangement(&self, document_id: DocumentId) -> Result<ArrangementId>;
 
     #[sub]

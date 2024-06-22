@@ -19,13 +19,6 @@ use crate::Backend;
 impl Backend {
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn list_arrangements(&self) -> Result<Vec<ArrangementId>> {
-        let arrangements = self.hub.arrangements.iter().map(|(id, _, _)| id).collect();
-        Ok(arrangements)
-    }
-
-    #[instrument(level = "trace", skip_all, err)]
-    #[handler]
     pub fn create_arrangement(&mut self, document_id: DocumentId) -> Result<ArrangementId> {
         let tempo_map = TempoMap::new(120.0);
         let tempo_map_id = self

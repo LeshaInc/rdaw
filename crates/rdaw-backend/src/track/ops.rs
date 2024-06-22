@@ -17,13 +17,6 @@ use crate::Backend;
 impl Backend {
     #[instrument(level = "trace", skip_all, err)]
     #[handler]
-    pub fn list_tracks(&self) -> Result<Vec<TrackId>> {
-        let tracks = self.hub.tracks.iter().map(|(id, _, _)| id).collect();
-        Ok(tracks)
-    }
-
-    #[instrument(level = "trace", skip_all, err)]
-    #[handler]
     pub fn create_track(&mut self, document_id: DocumentId) -> Result<TrackId> {
         let track = Track::new(String::new());
         let id = self

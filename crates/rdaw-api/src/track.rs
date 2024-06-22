@@ -21,8 +21,6 @@ pub struct TrackViewId {
 
 #[rdaw_rpc::operations(protocol = BackendProtocol)]
 pub trait TrackOperations {
-    async fn list_tracks(&self) -> Result<Vec<TrackId>>;
-
     async fn create_track(&self, document_id: DocumentId) -> Result<TrackId>;
 
     #[sub]

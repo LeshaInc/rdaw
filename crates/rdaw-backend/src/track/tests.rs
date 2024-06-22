@@ -9,27 +9,6 @@ use rdaw_api::{assert_err, ErrorKind, Result};
 use crate::tests::{invalid_track_id, run_test};
 
 #[test]
-fn list_tracks() -> Result<()> {
-    run_test(|client| async move {
-        let document_id = client.create_document().await?;
-
-        let tracks = client.list_tracks().await?;
-        assert_eq!(tracks.len(), 1);
-
-        let track1 = client.create_track(document_id).await?;
-        let track2 = client.create_track(document_id).await?;
-        assert!(track1 != track2);
-
-        let mut tracks = client.list_tracks().await?;
-        tracks.sort_unstable();
-        assert_eq!(tracks.len(), 3);
-        assert_eq!(tracks[1..], vec![track1, track2]);
-
-        Ok(())
-    })
-}
-
-#[test]
 fn subscribe_track_name() -> Result<()> {
     run_test(|client| async move {
         let document_id = client.create_document().await?;
