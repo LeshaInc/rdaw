@@ -3,7 +3,8 @@ use floem::reactive::{create_effect, RwSignal};
 use floem::views::{h_stack, text_input, Decorators};
 use floem::IntoView;
 use rdaw_api::track::TrackId;
-use rdaw_ui::{button, ColorKind, Level};
+use rdaw_ui::theme::{ColorKind, Level};
+use rdaw_ui::views::button;
 
 use crate::{api, get_document_id, stream_for_each};
 

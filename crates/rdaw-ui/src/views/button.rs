@@ -4,7 +4,7 @@ use floem::style::{self, CursorStyle, Style, Transition};
 use floem::views::{self, Decorators};
 use floem::IntoView;
 
-use super::{ColorKind, Level, Theme};
+use crate::theme::{ColorKind, Level, Theme};
 
 floem::style_class!(pub ButtonClass);
 
@@ -16,10 +16,10 @@ pub fn button<S: Display + 'static>(
     views::container(views::label(label))
         .keyboard_navigatable()
         .class(ButtonClass)
-        .style(move |s| add_style(color, level, s))
+        .style(move |s| button_style(color, level, s))
 }
 
-fn add_style(color: ColorKind, level: Level, s: Style) -> Style {
+fn button_style(color: ColorKind, level: Level, s: Style) -> Style {
     let theme = Theme::get();
     let colors = theme.colors[color][level];
     s.cursor(CursorStyle::Pointer)

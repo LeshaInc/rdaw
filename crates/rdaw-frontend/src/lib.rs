@@ -17,7 +17,7 @@ use futures::StreamExt;
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::document::DocumentId;
 use rdaw_api::{Backend, BoxStream, Error};
-use rdaw_ui::Theme;
+use rdaw_ui::theme::Theme;
 
 use crate::views::tree::FsTreeModel;
 
