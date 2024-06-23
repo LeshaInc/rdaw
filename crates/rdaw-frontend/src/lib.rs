@@ -1,31 +1,33 @@
 pub mod api;
 pub mod views;
 
-use std::collections::VecDeque;
-use std::future::Future;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use floem::ext_event::{create_ext_action, register_ext_trigger};
 use floem::keyboard::{Key, Modifiers, NamedKey};
 use floem::peniko::Color;
-use floem::reactive::{provide_context, use_context, with_scope, RwSignal, Scope};
-use floem::views::{dyn_container, h_stack, Decorators};
+use floem::reactive::{provide_context, use_context, RwSignal};
+use floem::views::{dyn_container, h_stack, scroll, Decorators};
 use floem::{IntoView, View};
 use futures::executor::{block_on, ThreadPool};
-use futures::task::SpawnExt;
-use futures::StreamExt;
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::document::DocumentId;
-use rdaw_api::{Backend, BoxStream, Error};
+use rdaw_api::{Backend, Error};
+use rdaw_ui::task::provide_executor;
 use rdaw_ui::theme::Theme;
 use rdaw_ui::views::tree::{tree, FsTreeModel};
+use views::arrangement;
 
 pub fn app_view(document_id: DocumentId, main_arrangement: ArrangementId) -> impl IntoView {
     provide_document_id(document_id);
 
     h_stack((
-        tree(FsTreeModel).style(|s| s.width(500.0).border_right(1.0).border_color(Color::BLACK)),
-        views::arrangement(main_arrangement),
+        scroll(tree(FsTreeModel::new("/".into()))).style(|s| {
+            s.min_width(400.0)
+                .max_width(400.0)
+                .border_right(1.0)
+                .border_color(Color::BLACK)
+        }),
+        arrangement(main_arrangement),
     ))
     .style(|s| s.width_full().height_full())
     .window_scale(move || 1.0)
@@ -39,69 +41,11 @@ pub fn provide_document_id(id: DocumentId) {
     provide_context(id);
 }
 
-pub fn spawn<T: Send + 'static>(
-    future: impl Future<Output = T> + Send + 'static,
-    on_completed: impl FnOnce(T) + 'static,
-) {
-    let scope = Scope::current();
-    let executor = use_context::<Arc<ThreadPool>>().unwrap();
-
-    let child = scope.create_child();
-    let send = create_ext_action(scope, move |v| {
-        with_scope(child, move || {
-            on_completed(v);
-        });
-    });
-
-    let handle = executor
-        .spawn_with_handle(async move {
-            send(future.await);
-        })
-        .unwrap();
-
-    scope.create_rw_signal(handle);
-}
-
-pub fn stream_for_each<T: Send + 'static>(
-    mut stream: BoxStream<T>,
-    on_message: impl Fn(T) + 'static,
-) {
-    let scope = Scope::current();
-    let queue = Arc::new(Mutex::new(VecDeque::new()));
-
-    let trigger = scope.create_trigger();
-    trigger.notify();
-
-    let queue_clone = queue.clone();
-    scope.create_effect(move |_| {
-        trigger.track();
-        if let Ok(mut queue) = queue_clone.lock() {
-            while let Some(value) = queue.pop_front() {
-                on_message(value);
-            }
-        }
-    });
-
-    spawn(
-        async move {
-            while let Some(value) = stream.next().await {
-                if let Ok(mut queue) = queue.lock() {
-                    queue.push_back(value);
-                }
-
-                register_ext_trigger(trigger);
-            }
-        },
-        drop,
-    );
-}
-
 pub fn run(backend: Arc<dyn Backend>) {
     let executor = Arc::new(ThreadPool::builder().pool_size(1).create().unwrap());
 
+    provide_executor(executor.clone());
     provide_context(backend.clone());
-    provide_context(executor.clone());
-
     Theme::light().provide();
 
     let (document_id, main_arrangement) = block_on(async move {

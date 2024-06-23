@@ -12,9 +12,10 @@ use floem::{IntoView, View};
 use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::track::{TrackHierarchy, TrackHierarchyEvent, TrackId, TrackNode};
 use rdaw_core::collections::{HashMap, HashSet, ImVec};
+use rdaw_ui::task::stream_for_each;
 
+use crate::api;
 use crate::views::{track_control, track_items};
-use crate::{api, stream_for_each};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum DropLocation {

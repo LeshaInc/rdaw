@@ -1,78 +1,21 @@
+mod fs;
+mod model;
+
 use floem::reactive::{create_effect, RwSignal};
-use floem::views::{scroll, virtual_stack, Decorators, VirtualDirection, VirtualItemSize};
+use floem::views::{label, virtual_stack, Decorators, VirtualDirection, VirtualItemSize};
 use floem::IntoView;
 use rdaw_core::collections::ImVec;
-use rdaw_core::path::Utf8PathBuf;
 
-pub trait TreeModel: 'static {
-    type Node: TreeNode;
-
-    fn get_root(&self) -> Self::Node;
-
-    fn get_children(&self, parent: &Self::Node) -> Vec<Self::Node>;
-}
-
-pub trait TreeNode: Clone {
-    fn name(&self) -> &str;
-
-    fn has_children(&self) -> bool;
-}
-
-#[derive(Clone)]
-pub struct FsTreeModel;
-
-impl TreeModel for FsTreeModel {
-    type Node = FsTreeNode;
-
-    fn get_root(&self) -> FsTreeNode {
-        FsTreeNode {
-            is_dir: true,
-            path: Utf8PathBuf::from("/"), // FIXME: portability
-        }
-    }
-
-    fn get_children(&self, parent: &FsTreeNode) -> Vec<FsTreeNode> {
-        let mut children = Vec::new();
-
-        let Ok(entries) = parent.path.read_dir_utf8() else {
-            return children;
-        };
-
-        for entry in entries {
-            let Ok(entry) = entry else { continue };
-
-            let is_dir = entry.file_type().unwrap().is_dir();
-            children.push(FsTreeNode {
-                is_dir,
-                path: entry.into_path(),
-            })
-        }
-
-        children
-    }
-}
-
-#[derive(Clone)]
-pub struct FsTreeNode {
-    pub is_dir: bool,
-    pub path: Utf8PathBuf,
-}
-
-impl TreeNode for FsTreeNode {
-    fn name(&self) -> &str {
-        self.path.components().last().unwrap().as_str()
-    }
-
-    fn has_children(&self) -> bool {
-        self.is_dir
-    }
-}
+pub use self::fs::{FsTreeModel, FsTreeNode};
+pub use self::model::{TreeModel, TreeNode};
+use crate::task::spawn;
+use crate::theme::Theme;
 
 pub fn tree<M: TreeModel>(model: M) -> impl IntoView {
     let model = RwSignal::new(model);
 
     let root = RwSignal::new(Tree {
-        node: model.with(|m| m.get_root()),
+        node: model.with(|m| m.root()),
         children: Vec::new(),
         path: Vec::new(),
     });
@@ -92,13 +35,16 @@ pub fn tree<M: TreeModel>(model: M) -> impl IntoView {
         });
     });
 
-    scroll(virtual_stack(
+    virtual_stack(
         VirtualDirection::Vertical,
-        VirtualItemSize::Fixed(Box::new(|| 25.0)),
+        VirtualItemSize::Fixed(Box::new(|| {
+            let theme = Theme::get();
+            f64::from(theme.fonts.normal.m.size * 1.5)
+        })),
         move || order.get(),
         move |(_, path)| path.clone(),
         move |(node, path)| tree_node(model, root, node, path),
-    ))
+    )
 }
 
 fn tree_node<M: TreeModel>(
@@ -108,23 +54,46 @@ fn tree_node<M: TreeModel>(
     path: Vec<usize>,
 ) -> impl IntoView {
     let depth = path.len();
+    let is_expanded = RwSignal::new(false);
+    let has_children = node.has_children();
+    let node_name = node.name().to_owned();
 
-    let name = if node.has_children() {
-        format!(" [+] {}", node.name())
-    } else {
-        node.name().to_string()
-    };
-
-    let mut view = name.style(move |s| {
+    let mut view = label(move || {
+        if has_children {
+            if is_expanded.get() {
+                format!("[−] {}", node_name)
+            } else {
+                format!("[+] {}", node_name)
+            }
+        } else {
+            node_name.clone()
+        }
+    })
+    .style(move |s| {
+        let theme = Theme::get();
         s.width_full()
-            .height(25.0)
+            .height(theme.fonts.normal.m.size * 1.5)
+            .font_family(theme.fonts.normal.m.family.clone())
+            .font_size(theme.fonts.normal.m.size)
             .padding_left(15.0 * (depth as f32))
+            .padding_right(15.0)
     });
 
     if node.has_children() {
         view = view.on_click_stop(move |_| {
-            let children = model.with(|m| m.get_children(&node));
-            root.update(|root| root.set_children(&path, children));
+            is_expanded.update(|v| *v = !*v);
+
+            if is_expanded.get() {
+                let node = node.clone();
+                let path = path.clone();
+                model.with(move |model| {
+                    spawn(model.get_children(&node), move |children| {
+                        root.update(|root| root.set_children(&path, children));
+                    })
+                });
+            } else {
+                root.update(|root| root.set_children(&path, Vec::new()));
+            }
         });
     }
 

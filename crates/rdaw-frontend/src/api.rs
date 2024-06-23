@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use floem::reactive::use_context;
 use rdaw_api::{Backend, Error, Result};
-
-use crate::spawn;
+use rdaw_ui::task::spawn;
 
 pub fn get_backend() -> Arc<dyn Backend> {
     use_context().expect("no backend in scope")

@@ -8,3 +8,4 @@ rdaw-core.workspace = true
 
 floem.workspace = true
 palette.workspace = true
+futures.workspace = true
