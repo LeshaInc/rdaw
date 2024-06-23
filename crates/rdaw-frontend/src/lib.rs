@@ -18,15 +18,13 @@ use rdaw_api::arrangement::ArrangementId;
 use rdaw_api::document::DocumentId;
 use rdaw_api::{Backend, BoxStream, Error};
 use rdaw_ui::theme::Theme;
-
-use crate::views::tree::FsTreeModel;
+use rdaw_ui::views::tree::{tree, FsTreeModel};
 
 pub fn app_view(document_id: DocumentId, main_arrangement: ArrangementId) -> impl IntoView {
     provide_document_id(document_id);
 
     h_stack((
-        views::tree(FsTreeModel)
-            .style(|s| s.width(500.0).border_right(1.0).border_color(Color::BLACK)),
+        tree(FsTreeModel).style(|s| s.width(500.0).border_right(1.0).border_color(Color::BLACK)),
         views::arrangement(main_arrangement),
     ))
     .style(|s| s.width_full().height_full())
