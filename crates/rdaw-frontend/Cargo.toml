@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 rdaw-api.workspace = true
 rdaw-core.workspace = true
-rdaw-ui-kit.workspace = true
+rdaw-ui.workspace = true
 
 floem.workspace = true
 futures.workspace = true

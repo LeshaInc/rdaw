@@ -14,7 +14,7 @@ rdaw-frontend = { path = "crates/rdaw-frontend", version = "0.1.0" }
 rdaw-macros = { path = "crates/rdaw-macros", version = "0.1.0" }
 rdaw-pipewire = { path = "crates/rdaw-pipewire", version = "0.1.0" }
 rdaw-rpc = { path = "crates/rdaw-rpc", version = "0.1.0" }
-rdaw-ui-kit = { path = "crates/rdaw-ui-kit", version = "0.1.0" }
+rdaw-ui = { path = "crates/rdaw-ui", version = "0.1.0" }
 
 ahash = "0.8.11"
 async-channel = "2.3"
