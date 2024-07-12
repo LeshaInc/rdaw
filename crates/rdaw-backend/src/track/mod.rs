@@ -1,7 +1,5 @@
 mod encoding;
 mod ops;
-#[cfg(test)]
-mod tests;
 mod view;
 
 use rdaw_api::track::{TrackId, TrackItem, TrackItemId};

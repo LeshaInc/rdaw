@@ -5,8 +5,6 @@ pub mod item;
 pub mod object;
 pub mod source;
 pub mod tempo_map;
-#[cfg(test)]
-pub mod tests;
 pub mod track;
 
 use std::future::Future;

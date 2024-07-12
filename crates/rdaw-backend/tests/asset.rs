@@ -1,3 +1,5 @@
+mod common;
+
 use std::io::Write;
 
 use rdaw_api::asset::{AssetMetadata, AssetOperations};
@@ -6,7 +8,7 @@ use rdaw_api::Result;
 use rdaw_core::path::Utf8PathBuf;
 use tempfile::NamedTempFile;
 
-use crate::tests::run_test;
+use self::common::run_test;
 
 #[test]
 fn create_external_asset() -> Result<()> {

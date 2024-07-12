@@ -1,12 +1,19 @@
+mod common;
+
 use futures::StreamExt;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rdaw_api::document::DocumentOperations;
-use rdaw_api::track::{TrackHierarchyEvent, TrackNode, TrackOperations};
+use rdaw_api::track::{TrackHierarchyEvent, TrackId, TrackNode, TrackOperations};
 use rdaw_api::{assert_err, ErrorKind, Result};
+use slotmap::KeyData;
 
-use crate::tests::{invalid_track_id, run_test};
+use self::common::run_test;
+
+fn invalid_track_id() -> TrackId {
+    TrackId::from(KeyData::from_ffi(u64::MAX))
+}
 
 #[test]
 fn subscribe_track_name() -> Result<()> {
